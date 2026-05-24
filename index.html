@@ -7298,16 +7298,64 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
     const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
     let dateDisp=fl.arrivalDate||"";
     if(fl.arrivalDate){const d=new Date(fl.arrivalDate+"T00:00:00");dateDisp=`${fl.arrivalDate} (${DAYS[d.getDay()]})`;}
-    const driverPhotoHTML=driverPhoto
-      ?`<div style="text-align:center;margin:14px 0 6px"><img src="${driverPhoto}" style="max-width:220px;max-height:220px;border-radius:10px;border:2px solid #e2e8f0;object-fit:cover"/></div>`
-      :"";
-    const html=`<h2 style="text-align:center;font-family:monospace;font-size:22px;letter-spacing:2px">[ Pick-up Information ]</h2>
-${driverPhotoHTML}
-<table class="pickup-table">
-<tr><td>Flight info Arrival Time and Date</td><td>${fl.flightNumber||"___"} / ${dateDisp} ${fl.arrivalTime||""} / ${AIRPORTS[fl.airport]||fl.airport||""}</td></tr>
-<tr><td>PERSONAL INFORMATION</td><td>${disp}</td></tr>
-<tr><td colspan="2" class="yellow">Welcome To HANA Academy<br>Contact : 0926 727 4196 (Mr Bryan,Ko) &nbsp;&nbsp; 0966 633 8642 (Driver, Joel)</td></tr>
-</table>`;
+    const logo=window.HANA_LOGO_SRC||"";
+    const driverBlock=driverPhoto?`
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:18px 0 10px">
+        <img src="${driverPhoto}" style="width:160px;height:160px;object-fit:cover;border-radius:50%;border:4px solid #0d9488;box-shadow:0 4px 16px rgba(13,148,136,.25)"/>
+        <div style="font-size:11px;color:#64748b;font-weight:600;letter-spacing:1px;text-transform:uppercase">Your Driver / Guide</div>
+      </div>`:"";
+    const html=`
+      <!-- Header banner -->
+      <div style="background:linear-gradient(135deg,#0a4a5c 0%,#0d9488 60%,#14b8a6 100%);padding:22px 40px;display:flex;align-items:center;gap:16px">
+        ${logo?`<img src="${logo}" style="width:56px;height:56px;object-fit:cover;border-radius:10px;border:2px solid rgba(255,255,255,.3)"/>`:""}
+        <div>
+          <div style="color:white;font-size:22px;font-weight:900;letter-spacing:1.5px;font-family:Arial,sans-serif">HANA ACADEMY</div>
+          <div style="color:rgba(255,255,255,.8);font-size:11px;letter-spacing:2px;font-weight:600;margin-top:2px">GLOBAL EDUCATION HUB · CLARK, PHILIPPINES</div>
+        </div>
+        <div style="margin-left:auto;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.35);border-radius:8px;padding:8px 16px;text-align:center">
+          <div style="color:rgba(255,255,255,.75);font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase">Document</div>
+          <div style="color:white;font-size:13px;font-weight:900;letter-spacing:1px">PICK-UP NOTICE</div>
+        </div>
+      </div>
+      <!-- Title bar -->
+      <div style="background:#f0fdfa;border-bottom:2px solid #ccfbf1;padding:12px 40px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:18px;font-weight:900;color:#0f4c5c;letter-spacing:3px;font-family:'Courier New',monospace">[ ARRIVAL PICK-UP INFORMATION ]</div>
+        <div style="font-size:11px;color:#64748b;font-weight:600">${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
+      </div>
+      <div class="body-content" style="padding:24px 40px 32px">
+        ${driverBlock}
+        <!-- Info table -->
+        <table style="width:100%;border-collapse:collapse;margin-top:${driverBlock?8:16}px;font-family:Arial,sans-serif">
+          <thead>
+            <tr style="background:linear-gradient(135deg,#0a4a5c,#0d9488)">
+              <th style="padding:10px 16px;color:rgba(255,255,255,.8);font-size:10px;font-weight:700;letter-spacing:2px;text-align:left;text-transform:uppercase;width:38%">FIELD</th>
+              <th style="padding:10px 16px;color:rgba(255,255,255,.8);font-size:10px;font-weight:700;letter-spacing:2px;text-align:left;text-transform:uppercase">DETAILS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid #e2e8f0;background:white">
+              <td style="padding:14px 16px;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase">✈ Flight Info &amp; Arrival</td>
+              <td style="padding:14px 16px;font-size:14px;font-weight:800;color:#0f172a">${fl.flightNumber||"___"}&nbsp;&nbsp;|&nbsp;&nbsp;${dateDisp} ${fl.arrivalTime||""}&nbsp;&nbsp;|&nbsp;&nbsp;${AIRPORTS[fl.airport]||fl.airport||""}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #e2e8f0;background:#f8fafc">
+              <td style="padding:14px 16px;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase">👤 Passenger(s)</td>
+              <td style="padding:14px 16px;font-size:14px;font-weight:800;color:#0f172a">${disp}</td>
+            </tr>
+          </tbody>
+        </table>
+        <!-- Contact banner -->
+        <div style="margin-top:20px;background:linear-gradient(135deg,#fef08a,#fde047);border:2px solid #facc15;border-radius:10px;padding:16px 24px;text-align:center">
+          <div style="font-size:13px;font-weight:900;color:#713f12;letter-spacing:.5px;margin-bottom:6px">🎓 Welcome to HANA Academy!</div>
+          <div style="font-size:12px;font-weight:700;color:#78350f">
+            📞 Mr. Bryan Ko &nbsp;·&nbsp; 0926 727 4196 &nbsp;&nbsp;|&nbsp;&nbsp; 🚗 Driver Joel &nbsp;·&nbsp; 0966 633 8642
+          </div>
+        </div>
+        <!-- Footer note -->
+        <div style="margin-top:20px;padding-top:16px;border-top:1px dashed #cbd5e1;display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:10px;color:#94a3b8;font-style:italic">Please show this document to the driver upon arrival.</div>
+          <div style="font-size:10px;color:#94a3b8;font-weight:600">app.clarkhana.com</div>
+        </div>
+      </div>`;
     printDoc(html,"Pick-up Confirmation");
   }
 
@@ -10036,7 +10084,6 @@ class ErrorBoundary extends React.Component {
     var h=document.querySelector('[data-header="1"]');
     if(h)document.documentElement.style.setProperty('--header-h',h.getBoundingClientRect().height+'px');
   }
-  /* Run after React renders */
   setTimeout(setHeaderVar,200);
   window.addEventListener('resize',setHeaderVar);
 })();
@@ -10052,7 +10099,6 @@ class ErrorBoundary extends React.Component {
       if(INTERACTIVE.indexOf(el.tagName)!==-1)return true;
       var cls=el.className||'';
       if(typeof cls==='string'&&(cls.indexOf('kb-card')!==-1||cls.indexOf('ed-bg')!==-1||cls.indexOf('ed-box')!==-1||cls.indexOf('kb-add-btn')!==-1||cls.indexOf('kb-move-btn')!==-1))return true;
-      /* Allow native drag&drop on draggable cells (Teacher Schedule) */
       if(el.getAttribute&&el.getAttribute('draggable')==='true')return true;
       el=el.parentElement;
     }
