@@ -3369,7 +3369,8 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
   const fileInputRef=React.useRef(null);
   const[activeMemberIdx,setActiveMemberIdx]=useState(0);
   const[showIdPanel,setShowIdPanel]=useState(true);
-  const[bannerTop,setBannerTop]=useState(()=>{try{return localStorage.getItem("hana_id_banner_top")||"";}catch(e){return"";}});
+  const[bannerTop,setBannerTop]=useState(()=>{try{return localStorage.getItem("hana_id_banner_top")||"";}catch(e){return""}});
+  const[bannerUploading,setBannerUploading]=useState(null);
   const[bannerBottom,setBannerBottom]=useState(()=>{try{return localStorage.getItem("hana_id_banner_bottom")||"";}catch(e){return"";}});
   const scrollContainerRef=React.useRef(null);
   const observerRef=React.useRef(null);
@@ -3395,9 +3396,29 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
     },300);
     return()=>{clearTimeout(timer);if(observerRef.current)observerRef.current.disconnect();};
   },[members.length,showIdPanel]);
-  function saveBanner(type,data){
-    try{localStorage.setItem("hana_id_banner_"+type,data);}catch(e){}
-    if(type==="top")setBannerTop(data);else setBannerBottom(data);
+  async function saveBanner(type,file){
+    if(!file){
+      try{localStorage.setItem("hana_id_banner_"+type,"");}catch(e){}
+      if(type==="top")setBannerTop("");else setBannerBottom("");
+      return;
+    }
+    try{
+      setBannerUploading(type);
+      const ext=(file.name.split(".").pop()||"jpg").toLowerCase();
+      const path="id-banner-"+type+"."+ext;
+      const{error:upErr}=await _sb.storage.from("hana-banners").upload(path,file,{upsert:true,contentType:file.type});
+      if(upErr)throw upErr;
+      const{data:{publicUrl}}=_sb.storage.from("hana-banners").getPublicUrl(path);
+      const url=publicUrl+"?v="+Date.now();
+      try{localStorage.setItem("hana_id_banner_"+type,url);}catch(e){}
+      if(type==="top")setBannerTop(url);else setBannerBottom(url);
+    }catch(e){
+      alert("업로드 실패: "+e.message+"
+
+Supabase Storage에 'hana-banners' public 버킷이 있는지 확인하세요.");
+    }finally{
+      setBannerUploading(null);
+    }
   }
 
   function updateMember(i,m){
@@ -3710,14 +3731,14 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:4}}>
             <span style={{fontSize:11,fontWeight:700,color:"#6b7280"}}>🪪 ID Card</span>
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-              <label title="Upload top banner" style={{padding:"3px 8px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:5,fontSize:10,fontWeight:700,color:"#1d4ed8",cursor:"pointer",whiteSpace:"nowrap"}}>
-                ⬆ Top<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>saveBanner("top",ev.target.result);r.readAsDataURL(f);e.target.value="";}}/>
+              <label title="Upload top banner" style={{padding:"3px 8px",background:bannerUploading==="top"?"#dbeafe":"#eff6ff",border:"1px solid #bfdbfe",borderRadius:5,fontSize:10,fontWeight:700,color:"#1d4ed8",cursor:"pointer",whiteSpace:"nowrap"}}>
+                {bannerUploading==="top"?"⏳ Uploading...":"⬆ Top"}<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;saveBanner("top",f);e.target.value="";}}/>
               </label>
-              <label title="Upload bottom banner" style={{padding:"3px 8px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:5,fontSize:10,fontWeight:700,color:"#1d4ed8",cursor:"pointer",whiteSpace:"nowrap"}}>
-                ⬆ Bot<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>saveBanner("bottom",ev.target.result);r.readAsDataURL(f);e.target.value="";}}/>
+              <label title="Upload bottom banner" style={{padding:"3px 8px",background:bannerUploading==="bottom"?"#dbeafe":"#eff6ff",border:"1px solid #bfdbfe",borderRadius:5,fontSize:10,fontWeight:700,color:"#1d4ed8",cursor:"pointer",whiteSpace:"nowrap"}}>
+                {bannerUploading==="bottom"?"⏳ Uploading...":"⬆ Bot"}<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;saveBanner("bottom",f);e.target.value="";}}/>
               </label>
-              {bannerTop&&<button type="button" onClick={()=>saveBanner("top","")} style={{padding:"3px 6px",background:"none",border:"1px solid #fca5a5",borderRadius:5,fontSize:10,color:"#dc2626",cursor:"pointer"}}>✕T</button>}
-              {bannerBottom&&<button type="button" onClick={()=>saveBanner("bottom","")} style={{padding:"3px 6px",background:"none",border:"1px solid #fca5a5",borderRadius:5,fontSize:10,color:"#dc2626",cursor:"pointer"}}>✕B</button>}
+              {bannerTop&&<button type="button" onClick={()=>saveBanner("top",null)} style={{padding:"3px 6px",background:"none",border:"1px solid #fca5a5",borderRadius:5,fontSize:10,color:"#dc2626",cursor:"pointer"}}>✕T</button>}
+              {bannerBottom&&<button type="button" onClick={()=>saveBanner("bottom",null)} style={{padding:"3px 6px",background:"none",border:"1px solid #fca5a5",borderRadius:5,fontSize:10,color:"#dc2626",cursor:"pointer"}}>✕B</button>}
             </div>
           </div>
           {members.length>1&&<div style={{fontSize:10,color:"#64748b",marginBottom:6,textAlign:"center",padding:"3px 8px",background:"#f8fafc",borderRadius:6,border:"1px solid #e2e8f0"}}>
