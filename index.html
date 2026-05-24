@@ -9389,7 +9389,7 @@ function App(){
               )}
             </div>
             {/* ── Action buttons ── */}
-            {role==="admin"&&!isArchiveView&&(
+            {canSaveSched&&!isArchiveView&&(
               <>
                 {/* Confirm Week (current, not yet confirmed) */}
                 {!isDraftView&&weekStatus==="active"&&(
