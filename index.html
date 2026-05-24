@@ -3370,7 +3370,32 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
   const[agencyName,setAgencyName]=useState(initialCard?.agencyName||"");
   const[consultant,setConsultant]=useState(initialCard?.consultant||"");
   const[attachments,setAttachments]=useState(initialCard?.attachments||[]);
+  const[attUploading,setAttUploading]=useState(false);
   const fileInputRef=React.useRef(null);
+  const cardIdRef=React.useRef(initialCard?.id||("new_"+Date.now()));
+  async function uploadAttachment(file){
+    const MAX_MB=50;
+    if(file.size>MAX_MB*1024*1024){alert(file.name+" exceeds "+MAX_MB+"MB limit.");return;}
+    const ts=Date.now();
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+    const path="cards/"+cardIdRef.current+"/"+ts+"_"+safeName;
+    try{
+      setAttUploading(true);
+      const{error:upErr}=await _sb.storage.from("hana-attachments").upload(path,file,{contentType:file.type});
+      if(upErr)throw upErr;
+      const{data:{publicUrl}}=_sb.storage.from("hana-attachments").getPublicUrl(path);
+      const att={id:"att_"+ts,name:file.name,size:file.size,ftype:file.type,url:publicUrl,storagePath:path,uploadedAt:new Date().toISOString()};
+      setAttachments(p=>[...p,att]);
+    }catch(e){
+      alert("Upload failed: "+e.message+"\n\nMake sure 'hana-attachments' public bucket exists in Supabase Storage.");
+    }finally{setAttUploading(false);}
+  }
+  async function removeAttachment(att){
+    if(att.storagePath){
+      try{await _sb.storage.from("hana-attachments").remove([att.storagePath]);}catch(e){console.warn("Storage delete failed:",e.message);}
+    }
+    setAttachments(p=>p.filter(a=>a.id!==att.id));
+  }
   const[activeMemberIdx,setActiveMemberIdx]=useState(0);
   const[showIdPanel,setShowIdPanel]=useState(true);
   const[bannerTop,setBannerTop]=useState(()=>{try{return localStorage.getItem("hana_id_banner_top")||"";}catch(e){return""}});
@@ -3605,25 +3630,16 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
             <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase"}}>
               📎 Attachments {attachments.length>0&&<span style={{background:"#dbeafe",color:"#1d4ed8",borderRadius:10,padding:"1px 7px",marginLeft:4}}>{attachments.length}</span>}
             </div>
-            <button onClick={()=>fileInputRef.current?.click()}
-              style={{padding:"4px 10px",background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",
-                borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>
-              ＋ Upload File
+            <button onClick={()=>!attUploading&&fileInputRef.current?.click()}
+              style={{padding:"4px 10px",background:attUploading?"#f1f5f9":"#eff6ff",color:attUploading?"#9ca3af":"#1d4ed8",border:"1px solid #bfdbfe",
+                borderRadius:6,fontSize:11,fontWeight:700,cursor:attUploading?"not-allowed":"pointer"}}>
+              {attUploading?"⏳ Uploading...":"＋ Upload File"}
             </button>
             <input ref={fileInputRef} type="file" multiple style={{display:"none"}}
-              accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt,.zip"
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt,.zip,.mp4,.mov,.mp3,.m4a"
               onChange={e=>{
                 const files=Array.from(e.target.files||[]);
-                files.forEach(file=>{
-                  if(file.size>5*1024*1024){alert(file.name+" is over 5MB. For large files, use Supabase Storage.");return;}
-                  const reader=new FileReader();
-                  reader.onload=ev=>{
-                    const att={id:"att_"+Date.now()+"_"+Math.random().toString(36).slice(2,5),
-                      name:file.name,size:file.size,ftype:file.type,data:ev.target.result,uploadedAt:new Date().toISOString()};
-                    setAttachments(p=>[...p,att]);
-                  };
-                  reader.readAsDataURL(file);
-                });
+                files.forEach(file=>uploadAttachment(file));
                 e.target.value="";
               }}
             />
@@ -3646,24 +3662,24 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
                   <div style={{fontSize:12,fontWeight:600,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{att.name}</div>
                   <div style={{fontSize:10,color:"#9ca3af"}}>{kb} KB · {new Date(att.uploadedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
                 </div>
-                <a href={att.data} download={att.name}
+                <a href={att.url||att.data} download={att.name} target="_blank" rel="noreferrer"
                   style={{padding:"3px 9px",background:"#dbeafe",color:"#1d4ed8",borderRadius:5,fontSize:11,fontWeight:700,textDecoration:"none",whiteSpace:"nowrap"}}>
                   ⬇ Save
                 </a>
-                {isImg&&(
-                  <a href={att.data} target="_blank" rel="noreferrer"
+                {(isImg||isPdf)&&(
+                  <a href={att.url||att.data} target="_blank" rel="noreferrer"
                     style={{padding:"3px 9px",background:"#d1fae5",color:"#166534",borderRadius:5,fontSize:11,fontWeight:700,textDecoration:"none",whiteSpace:"nowrap"}}>
                     👁 View
                   </a>
                 )}
-                <button onClick={()=>setAttachments(p=>p.filter(a=>a.id!==att.id))}
+                <button onClick={()=>removeAttachment(att)}
                   style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:15,lineHeight:1,padding:"2px 4px"}}>✕</button>
               </div>
             );
           })}
           {attachments.length>0&&(
             <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>
-              💡 Files stored locally. For long-term cloud storage, connect Supabase Storage.
+              ☁️ Files stored in Supabase Storage (hana-attachments). Up to 50MB per file.
             </div>
           )}
         </div>
@@ -7132,6 +7148,29 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
   const[loaText,setLoaText]=useState(e.acceptanceLetter?.text||"");
   const[pickupText,setPickupText]=useState(e.pickupLetter?.text||"");
   const[dormSheetRoom,setDormSheetRoom]=useState(null);
+  const[driverPhoto,setDriverPhoto]=useState(()=>{try{return localStorage.getItem("hana_driver_photo")||"";}catch(e){return"";}});
+  const[driverPhotoUploading,setDriverPhotoUploading]=useState(false);
+  async function saveDriverPhoto(file){
+    if(!file){
+      try{localStorage.setItem("hana_driver_photo","");}catch(e){}
+      setDriverPhoto("");return;
+    }
+    try{
+      setDriverPhotoUploading(true);
+      const ext=(file.name.split(".").pop()||"jpg").toLowerCase();
+      const path="driver-photo."+ext;
+      const{error:upErr}=await _sb.storage.from("hana-banners").upload(path,file,{upsert:true,contentType:file.type});
+      if(upErr)throw upErr;
+      const{data:{publicUrl}}=_sb.storage.from("hana-banners").getPublicUrl(path);
+      const url=publicUrl+"?v="+Date.now();
+      try{localStorage.setItem("hana_driver_photo",url);}catch(e){}
+      setDriverPhoto(url);
+    }catch(err){
+      alert("드라이버 사진 업로드 실패: "+err.message);
+    }finally{
+      setDriverPhotoUploading(false);
+    }
+  }
   /* Derive nat filter from current agencyId so dropdowns stay in sync */
   const[agNatFilter,setAgNatFilter]=useState(()=>{
     if(!e.agencyId)return"";
@@ -7259,7 +7298,11 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
     const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
     let dateDisp=fl.arrivalDate||"";
     if(fl.arrivalDate){const d=new Date(fl.arrivalDate+"T00:00:00");dateDisp=`${fl.arrivalDate} (${DAYS[d.getDay()]})`;}
+    const driverPhotoHTML=driverPhoto
+      ?`<div style="text-align:center;margin:14px 0 6px"><img src="${driverPhoto}" style="max-width:220px;max-height:220px;border-radius:10px;border:2px solid #e2e8f0;object-fit:cover"/></div>`
+      :"";
     const html=`<h2 style="text-align:center;font-family:monospace;font-size:22px;letter-spacing:2px">[ Pick-up Information ]</h2>
+${driverPhotoHTML}
 <table class="pickup-table">
 <tr><td>Flight info Arrival Time and Date</td><td>${fl.flightNumber||"___"} / ${dateDisp} ${fl.arrivalTime||""} / ${AIRPORTS[fl.airport]||fl.airport||""}</td></tr>
 <tr><td>PERSONAL INFORMATION</td><td>${disp}</td></tr>
@@ -7597,6 +7640,11 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
                 {isAdmin&&!pickupConfirmed&&<button onClick={confirmPickup} style={{...B,background:"#ea580c",color:"white"}}>✓ Confirm & Issue</button>}
                 {pickupConfirmed&&<button onClick={printPickup} style={{...B,background:"#f0fdf4",color:"#16a34a"}}>🖨 Print</button>}
                 {isAdmin&&pickupConfirmed&&<button onClick={unconfirmPickup} style={{...B,background:"#fee2e2",color:"#dc2626",fontSize:11}}>Cancel Issue</button>}
+                <label style={{...B,background:driverPhoto?"#eff6ff":"#f1f5f9",color:driverPhoto?"#1d4ed8":"#64748b",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}>
+                  {driverPhotoUploading?"⏳ Uploading...":(driverPhoto?"🚐 Driver Photo ✓":"🚐 Driver Photo")}
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={ev=>saveDriverPhoto(ev.target.files[0]||null)}/>
+                </label>
+                {driverPhoto&&<button onClick={()=>saveDriverPhoto(null)} style={{...B,background:"#fee2e2",color:"#dc2626",fontSize:11}}>✕ Remove Photo</button>}
               </div>
               {pickupConfirmed?(
                 <div>
@@ -10039,4 +10087,9 @@ class ErrorBoundary extends React.Component {
       if(c.canV)c.el.scrollTop=c.scrollTop-dy;
     });
   });
-  document.addEventListener('mouseup',function(){if(!panStart)return;panStart=null;document.body.classList.remove('pan-active'                                                                                            
+  document.addEventListener('mouseup',function(){if(!panStart)return;panStart=null;document.body.classList.remove('pan-active');});
+})();
+</script>
+
+</body>
+</html>
