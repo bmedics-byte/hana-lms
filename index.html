@@ -3227,7 +3227,7 @@ function generatePrintHTML(members, cardId, bannerTop, bannerBottom){
   return `<!DOCTYPE html><html><head><title>Hana Academy ID Cards</title>
     <style>body{margin:0;padding:20px;background:#f3f4f6;display:flex;flex-wrap:wrap;gap:20px;justify-content:center;font-family:Arial,sans-serif}
     @media print{body{background:white;padding:10px;gap:15px}}</style></head>
-    <body>${cardsHTML}<script>window.onload=function(){setTimeout(function(){window.print();},600);}<\/script></body></html>`;
+    <body>${cardsHTML}\x3cscript\x3ewindow.onload=function(){setTimeout(function(){window.print();},600);}\x3c/script\x3e</body></html>`;
 }
 
 /* ═════════════════════════════════════════════════════
@@ -3413,9 +3413,7 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
       try{localStorage.setItem("hana_id_banner_"+type,url);}catch(e){}
       if(type==="top")setBannerTop(url);else setBannerBottom(url);
     }catch(e){
-      alert("업로드 실패: "+e.message+"
-
-Supabase Storage에 'hana-banners' public 버킷이 있는지 확인하세요.");
+      alert("업로드 실패: "+e.message+"\n\nSupabase Storage에 'hana-banners' public 버킷이 있는지 확인하세요.");
     }finally{
       setBannerUploading(null);
     }
