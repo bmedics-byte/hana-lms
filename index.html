@@ -2579,13 +2579,22 @@ function MemberForm({member,onChange,index,onRemove,showRemove,isFamily,siblings
             <label style={{display:"block",padding:"6px 10px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,fontSize:11,fontWeight:700,color:"#1d4ed8",cursor:"pointer",textAlign:"center",marginBottom:4}}>
               📷 Upload Photo
               <input type="file" accept="image/*" style={{display:"none"}}
-                onChange={e=>{
+                onChange={async e=>{
                   const file=e.target.files?.[0];
                   if(!file)return;
-                  if(file.size>2*1024*1024){alert("Image must be under 2MB");return;}
-                  const reader=new FileReader();
-                  reader.onload=ev=>onChange({...member,photo:ev.target.result});
-                  reader.readAsDataURL(file);
+                  if(file.size>5*1024*1024){alert("Image must be under 5MB");return;}
+                  try{
+                    const ext=(file.name.split(".").pop()||"jpg").toLowerCase();
+                    const path="photos/photo_"+Date.now()+"."+ext;
+                    const{error:upErr}=await _sb.storage.from("hana-attachments").upload(path,file,{contentType:file.type});
+                    if(upErr)throw upErr;
+                    const{data:{publicUrl}}=_sb.storage.from("hana-attachments").getPublicUrl(path);
+                    onChange({...member,photo:publicUrl});
+                  }catch(err){
+                    const reader=new FileReader();
+                    reader.onload=ev=>onChange({...member,photo:ev.target.result});
+                    reader.readAsDataURL(file);
+                  }
                   e.target.value="";
                 }}/>
             </label>
@@ -3277,11 +3286,15 @@ function StudentIDCard({member, cardId, bannerTop, bannerBottom}){
       <div style={{display:"flex",padding:"8px 10px 6px",gap:9,flex:1}}>
         {/* Photo + ID label stacked in left column */}
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,flexShrink:0}}>
-          <div style={{width:85,flex:1,background:"#f1f5f9",border:"1.5px solid #cbd5e1",
-            borderRadius:6,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {member.photo
-              ?<img src={member.photo} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-              :<span style={{fontSize:36,color:"#cbd5e1"}}>👤</span>}
+          {/* Photo box — fixed 3:4 aspect ratio (width 85 → height 113) */}
+          <div style={{width:85,position:"relative"}}>
+            <div style={{paddingBottom:"133.33%",position:"relative",background:"#f1f5f9",border:"1.5px solid #cbd5e1",borderRadius:6,overflow:"hidden"}}>
+              <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {member.photo
+                  ?<img src={member.photo} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  :<span style={{fontSize:36,color:"#cbd5e1"}}>👤</span>}
+              </div>
+            </div>
           </div>
           {/* ── ID row — directly under photo ── */}
           <div style={{fontSize:10.8,color:"#64748b",fontStyle:"italic",textAlign:"center"}}>
@@ -6943,13 +6956,23 @@ function MessengerModal({currentUser,otherUser,isAdmin,isGroup,groupKey,groupLab
   React.useEffect(()=>{if(!isAdmin&&onMarkRead)onMarkRead(cKey,currentUser);},[]);
   React.useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[conv.length]);
 
-  function handleFile(e){
+  async function handleFile(e){
     const file=e.target.files?.[0];if(!file)return;
     setFileTooLarge(false);
-    if(file.size>500*1024){setFileTooLarge(true);e.target.value="";return;}
-    const reader=new FileReader();
-    reader.onload=()=>setFilePreview({name:file.name,type:file.type,data:reader.result,size:file.size});
-    reader.readAsDataURL(file);
+    if(file.size>5*1024*1024){setFileTooLarge(true);e.target.value="";return;}
+    try{
+      const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      const path="chat/"+Date.now()+"_"+safeName;
+      const{error:upErr}=await _sb.storage.from("hana-attachments").upload(path,file,{contentType:file.type});
+      if(upErr)throw upErr;
+      const{data:{publicUrl}}=_sb.storage.from("hana-attachments").getPublicUrl(path);
+      setFilePreview({name:file.name,type:file.type,url:publicUrl,size:file.size});
+    }catch(err){
+      /* fallback: base64 for small files */
+      const reader=new FileReader();
+      reader.onload=()=>setFilePreview({name:file.name,type:file.type,data:reader.result,size:file.size});
+      reader.readAsDataURL(file);
+    }
     e.target.value="";
   }
 
@@ -6976,12 +6999,12 @@ function MessengerModal({currentUser,otherUser,isAdmin,isGroup,groupKey,groupLab
           boxShadow:"0 1px 4px rgba(0,0,0,.1)",
           fontSize:13,lineHeight:1.45,wordBreak:"break-word"
         }}>
-          {isImg&&<img src={msg.file.data} alt={msg.file.name} style={{display:"block",maxWidth:220,maxHeight:200,width:"100%",objectFit:"contain"}}/>}
-          {isVid&&<video src={msg.file.data} controls style={{display:"block",maxWidth:220,maxHeight:160,width:"100%"}}/>}
+          {isImg&&<img src={msg.file.url||msg.file.data} alt={msg.file.name} style={{display:"block",maxWidth:220,maxHeight:200,width:"100%",objectFit:"contain"}}/>}
+          {isVid&&<video src={msg.file.url||msg.file.data} controls style={{display:"block",maxWidth:220,maxHeight:160,width:"100%"}}/>}
           {msg.file&&!isImg&&!isVid&&(
             <div style={{padding:"9px 13px"}}>
-              <a href={msg.file.data} download={msg.file.name} style={{color:self?"#bfdbfe":"#1e40af",textDecoration:"underline",fontSize:12}}>
-                📎 {msg.file.name} <span style={{opacity:.7}}>({Math.round(msg.file.size/1024)}KB)</span>
+              <a href={msg.file.url||msg.file.data} download={msg.file.name} target="_blank" rel="noopener noreferrer" style={{color:self?"#bfdbfe":"#1e40af",textDecoration:"underline",fontSize:12}}>
+                📎 {msg.file.name} <span style={{opacity:.7}}>({Math.round((msg.file.size||0)/1024)}KB)</span>
               </a>
             </div>
           )}
@@ -7021,7 +7044,7 @@ function MessengerModal({currentUser,otherUser,isAdmin,isGroup,groupKey,groupLab
         {/* File preview strip */}
         {filePreview&&(
           <div style={{padding:"8px 12px",background:"#f8fafc",borderTop:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-            {filePreview.type.startsWith("image/")?<img src={filePreview.data} style={{width:40,height:40,objectFit:"cover",borderRadius:6}}/>:<span style={{fontSize:22}}>📎</span>}
+            {filePreview.type.startsWith("image/")?<img src={filePreview.url||filePreview.data} style={{width:40,height:40,objectFit:"cover",borderRadius:6}}/>:<span style={{fontSize:22}}>📎</span>}
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:11,fontWeight:600,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{filePreview.name}</div>
               <div style={{fontSize:10,color:"#9ca3af"}}>{Math.round(filePreview.size/1024)}KB</div>
@@ -7031,14 +7054,14 @@ function MessengerModal({currentUser,otherUser,isAdmin,isGroup,groupKey,groupLab
         )}
         {fileTooLarge&&(
           <div style={{padding:"6px 14px",background:"#fef2f2",borderTop:"1px solid #fecaca",fontSize:11,color:"#dc2626",flexShrink:0}}>
-            ⚠ 파일이 500KB를 초과합니다. Google Drive 또는 링크로 공유해주세요.
+            ⚠ 파일이 5MB를 초과합니다. Google Drive 또는 링크로 공유해주세요.
           </div>
         )}
         {/* Input — hidden for admin */}
         {!isAdmin&&(
           <div style={{padding:"10px 12px",borderTop:"1px solid #e2e8f0",display:"flex",gap:8,background:"white",flexShrink:0,alignItems:"center"}}>
             <input type="file" ref={fileRef} onChange={handleFile} accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt" style={{display:"none"}}/>
-            <button onClick={()=>fileRef.current?.click()} title="파일 첨부 (최대 500KB)"
+            <button onClick={()=>fileRef.current?.click()} title="파일 첨부 (최대 5MB)"
               style={{background:"#f1f5f9",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"7px 9px",cursor:"pointer",fontSize:16,lineHeight:1,flexShrink:0,color:"#64748b"}}>📎</button>
             <input
               value={text} onChange={e=>setText(e.target.value)}
@@ -7210,12 +7233,21 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
       :<span style={{fontSize:10,background:"#f1f5f9",color:"#94a3b8",borderRadius:10,padding:"2px 9px",fontWeight:600}}>Pending</span>;
   }
 
-  function handlePassport(i,file){
+  async function handlePassport(i,file){
     if(!file)return;
-    if(file.size>2000000)return alert("File too large (max 2MB)");
-    const r=new FileReader();
-    r.onload=ev=>updMember(i,{...draft.members[i],passportPhoto:ev.target.result});
-    r.readAsDataURL(file);
+    if(file.size>5*1024*1024)return alert("File too large (max 5MB)");
+    try{
+      const ext=(file.name.split(".").pop()||"jpg").toLowerCase();
+      const path="passports/pp_"+Date.now()+"_"+i+"."+ext;
+      const{error:upErr}=await _sb.storage.from("hana-attachments").upload(path,file,{contentType:file.type});
+      if(upErr)throw upErr;
+      const{data:{publicUrl}}=_sb.storage.from("hana-attachments").getPublicUrl(path);
+      updMember(i,{...draft.members[i],passportPhoto:publicUrl});
+    }catch(err){
+      const r=new FileReader();
+      r.onload=ev=>updMember(i,{...draft.members[i],passportPhoto:ev.target.result});
+      r.readAsDataURL(file);
+    }
   }
 
   function genLoa(){const t=makeLoaText(draft);setLoaText(t);save({...draft,acceptanceLetter:{...draft.acceptanceLetter,text:t}});}
@@ -8543,7 +8575,22 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
             <div>
               <div style={{fontSize:10,fontWeight:700,color:AG_NAVY,marginBottom:3}}>Contract (opt.)</div>
               <input type="file" accept=".pdf,.jpg,.png" ref={contractRef} style={{display:"none"}}
-                onChange={ev=>{const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=e2=>setNewAgContract(e2.target.result);r.readAsDataURL(f);}}/>
+                onChange={async ev=>{
+                  const f=ev.target.files[0];if(!f)return;
+                  if(f.size>5*1024*1024){alert("File too large (max 5MB)");return;}
+                  try{
+                    const ext=(f.name.split(".").pop()||"pdf").toLowerCase();
+                    const path="contracts/contract_"+Date.now()+"."+ext;
+                    const{error:upErr}=await _sb.storage.from("hana-attachments").upload(path,f,{contentType:f.type});
+                    if(upErr)throw upErr;
+                    const{data:{publicUrl}}=_sb.storage.from("hana-attachments").getPublicUrl(path);
+                    setNewAgContract(publicUrl);
+                  }catch(err){
+                    const r=new FileReader();
+                    r.onload=e2=>setNewAgContract(e2.target.result);
+                    r.readAsDataURL(f);
+                  }
+                }}/>
               <button onClick={()=>contractRef.current&&contractRef.current.click()}
                 style={{padding:"6px 12px",border:"1.5px solid #ddd6fe",borderRadius:6,fontSize:11,cursor:"pointer",
                   background:newAgContract?"#d1fae5":"white",color:newAgContract?"#065f46":"#374151",fontWeight:600}}>
@@ -10067,6 +10114,7 @@ class ErrorBoundary extends React.Component {
               {this.state.info?.componentStack}
             </pre>
             <button onClick={()=>this.setState({err:null,info:null})} style={{marginTop:12,padding:"8px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700}}>Retry</button>
+       
           </div>
         </div>
       );
@@ -10074,67 +10122,28 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
-
-(async function(){await loadFromSupabase();ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);})();
+ReactDOM.render(
+  <ErrorBoundary>
+    <App/>
+  </ErrorBoundary>,
+  document.getElementById("root")
+);
 </script>
-
 <script>
-/* ── Auto-measure header height for sticky nav ── */
-(function(){
-  function setHeaderVar(){
-    var h=document.querySelector('[data-header="1"]');
-    if(h)document.documentElement.style.setProperty('--header-h',h.getBoundingClientRect().height+'px');
-  }
-  setTimeout(setHeaderVar,200);
-  window.addEventListener('resize',setHeaderVar);
-})();
-</script>
-
-<script>
-/* ── Pan-to-scroll ── */
-(function(){
-  var INTERACTIVE=['INPUT','TEXTAREA','SELECT','BUTTON','A','LABEL'];
-  var panStart=null;
-  function isInteractive(el){
-    while(el&&el!==document.body){
-      if(INTERACTIVE.indexOf(el.tagName)!==-1)return true;
-      var cls=el.className||'';
-      if(typeof cls==='string'&&(cls.indexOf('kb-card')!==-1||cls.indexOf('ed-bg')!==-1||cls.indexOf('ed-box')!==-1||cls.indexOf('kb-add-btn')!==-1||cls.indexOf('kb-move-btn')!==-1))return true;
-      if(el.getAttribute&&el.getAttribute('draggable')==='true')return true;
-      el=el.parentElement;
-    }
-    return false;
-  }
-  function getScrollableAncestors(el){
-    var list=[];var node=el;
-    while(node&&node!==document.documentElement){
-      var style=window.getComputedStyle(node);
-      var oX=style.overflowX,oY=style.overflowY;
-      var cH=(oX==='auto'||oX==='scroll')&&node.scrollWidth>node.clientWidth;
-      var cV=(oY==='auto'||oY==='scroll')&&node.scrollHeight>node.clientHeight;
-      if(cH||cV)list.push({el:node,scrollLeft:node.scrollLeft,scrollTop:node.scrollTop,canH:cH,canV:cV});
-      node=node.parentElement;
-    }
-    return list;
-  }
-  document.addEventListener('mousedown',function(e){
+(()=>{
+  let panStart=null;
+  document.addEventListener('mousedown',e=>{
     if(e.button!==0)return;
-    if(isInteractive(e.target))return;
-    var ancestors=getScrollableAncestors(e.target);
-    panStart={x:e.clientX,y:e.clientY,winX:window.scrollX,winY:window.scrollY,containers:ancestors};
+    if(e.target.closest('button,input,textarea,select,a,label,[role="button"]'))return;
+    panStart={x:e.clientX,y:e.clientY,sx:window.pageXOffset,sy:window.pageYOffset};
     document.body.classList.add('pan-active');
-    e.preventDefault();
-  },{passive:false});
-  document.addEventListener('mousemove',function(e){
+  },{passive:true});
+  document.addEventListener('mousemove',e=>{
     if(!panStart)return;
-    var dx=e.clientX-panStart.x,dy=e.clientY-panStart.y;
-    window.scrollTo(panStart.winX-dx,panStart.winY-dy);
-    panStart.containers.forEach(function(c){
-      if(c.canH)c.el.scrollLeft=c.scrollLeft-dx;
-      if(c.canV)c.el.scrollTop=c.scrollTop-dy;
-    });
-  });
-  document.addEventListener('mouseup',function(){if(!panStart)return;panStart=null;document.body.classList.remove('pan-active');});
+    window.scrollTo(panStart.sx+(panStart.x-e.clientX),panStart.sy+(panStart.y-e.clientY));
+  },{passive:true});
+  document.addEventListener('mouseup',()=>{
+    if(!panStart)return;panStart=null;document.body.classList.remove('pan-active');});
 })();
 </script>
 
