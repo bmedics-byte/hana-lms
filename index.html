@@ -2642,7 +2642,7 @@ function MemberForm({member,onChange,index,onRemove,showRemove,isFamily,siblings
         <label style={LS}>Nickname</label>
         <input style={FI} value={member.nickname||""} onChange={e=>onChange({...member,nickname:e.target.value})} placeholder="e.g. LUNA"/>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:6,alignItems:"end"}}>
         <div>
           <label style={LS}>Study Start <span style={{color:"#dc2626"}}>*</span></label>
           <CalendarPicker snapTo="sunday" value={member.studyStart}
@@ -2651,28 +2651,26 @@ function MemberForm({member,onChange,index,onRemove,showRemove,isFamily,siblings
         </div>
         <div>
           <label style={LS}>Study End <span style={{color:"#dc2626"}}>*</span></label>
-          <div style={{display:"flex",gap:5,alignItems:"stretch",marginBottom:6}}>
-            <CalendarPicker snapTo="saturday" value={member.studyEnd}
-              onChange={v=>onChange({...member,studyEnd:v})}
-              style={{flex:1}} placeholder="Pick end date"/>
-            <select
-              title="Select weeks → auto-fills end date"
-              style={{width:64,padding:"0 4px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,outline:"none",background:"white",flexShrink:0,cursor:"pointer"}}
-              value={(()=>{const wc=weekCount(member.studyStart,member.studyEnd);return wc>=1&&wc<=52?wc:"";})()}
-              onChange={e=>{
-                const w=parseInt(e.target.value);
-                if(!w||!member.studyStart)return;
-                /* Sunday start + w weeks = w*7-1 days later (lands on Saturday) */
-                const d=new Date(member.studyStart);
-                d.setDate(d.getDate()+w*7-1);
-                const y2=d.getFullYear(),m2=String(d.getMonth()+1).padStart(2,"0"),d2=String(d.getDate()).padStart(2,"0");
-                onChange({...member,studyEnd:`${y2}-${m2}-${d2}`});
-              }}>
-              <option value="">W</option>
-              {Array.from({length:52},(_,i)=><option key={i+1} value={i+1}>{i+1}w</option>)}
-            </select>
-          </div>
+          <CalendarPicker snapTo="saturday" value={member.studyEnd}
+            onChange={v=>onChange({...member,studyEnd:v})}
+            style={{marginBottom:6}} placeholder="Pick end date"/>
         </div>
+        <select
+          title="Select weeks → auto-fills end date"
+          style={{width:56,padding:"0 4px",border:"1.5px solid #e2e8f0",borderRadius:6,fontSize:11,outline:"none",background:"white",cursor:"pointer",marginBottom:6,height:34}}
+          value={(()=>{const wc=weekCount(member.studyStart,member.studyEnd);return wc>=1&&wc<=52?wc:"";})()}
+          onChange={e=>{
+            const w=parseInt(e.target.value);
+            if(!w||!member.studyStart)return;
+            /* Sunday start + w weeks = w*7-1 days later (lands on Saturday) */
+            const d=new Date(member.studyStart);
+            d.setDate(d.getDate()+w*7-1);
+            const y2=d.getFullYear(),m2=String(d.getMonth()+1).padStart(2,"0"),d2=String(d.getDate()).padStart(2,"0");
+            onChange({...member,studyEnd:`${y2}-${m2}-${d2}`});
+          }}>
+          <option value="">W</option>
+          {Array.from({length:52},(_,i)=><option key={i+1} value={i+1}>{i+1}w</option>)}
+        </select>
       </div>
       <label style={LS}>Course <span style={{color:"#dc2626"}}>*</span></label>
       <select style={FI} value={member.course} onChange={e=>onChange({...member,course:e.target.value,campLevel:"",customSpec:null,noClassTransfers:[]})}>
@@ -3276,10 +3274,10 @@ function StudentIDCard({member, cardId, bannerTop, bannerBottom}){
         </>
       }
       {/* ── Main info ── */}
-      <div style={{display:"flex",padding:"12px 14px 8px",gap:12,flex:1}}>
+      <div style={{display:"flex",padding:"8px 10px 6px",gap:9,flex:1}}>
         {/* Photo + ID label stacked in left column */}
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,flexShrink:0}}>
-          <div style={{width:111,height:155,background:"#f1f5f9",border:"1.5px solid #cbd5e1",
+          <div style={{width:85,flex:1,background:"#f1f5f9",border:"1.5px solid #cbd5e1",
             borderRadius:6,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
             {member.photo
               ?<img src={member.photo} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
@@ -3747,7 +3745,7 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
         )}
         </div>{/* end left col */}
         {/* ── Right column: ID Card Preview ── */}
-        {showIdPanel&&<div style={{width:360,flexShrink:0,position:"sticky",top:0}}>
+        {showIdPanel&&<div style={{width:270,flexShrink:0,position:"sticky",top:0}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:4}}>
             <span style={{fontSize:11,fontWeight:700,color:"#6b7280"}}>🪪 ID Card</span>
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
