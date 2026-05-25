@@ -8579,6 +8579,7 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
   const agLabel=isAdmin?"Agency Management":agencyId;
 
   return(
+    <>
     <div>
       {/* ── Prestige Navy Header ── */}
       <div style={{background:AG_NAVY,borderRadius:"12px 12px 0 0",padding:"16px 22px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
@@ -8949,6 +8950,7 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
         {refreshing?"Syncing…":"Refresh"}
       </button>
     </div>
+    </>
   );
 }
 
@@ -10380,4 +10382,6 @@ ReactDOM.render(
 </script>
 
 </body>
+</html>
+body>
 </html>
