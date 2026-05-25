@@ -9618,11 +9618,6 @@ function App(){
     }
     if(Object.keys(mainFields).length>0)pushSnap(mainFields);
   }
-  const activePushSnap=canSaveSched?(isDraftView?pushDraftSnap:pushSnap):noSave;
-  const activeSetSched=isDraftView
-    ?(fn=>setDraftWeek(prev=>{if(!prev)return prev;const s=typeof fn==='function'?fn(prev.sched):fn;return{...prev,sched:s};}))
-    :setSched;
-
   /* ── Workflow actions ── */
   function doConfirmWeek(){
     setWeekStatus("confirmed");
@@ -9707,7 +9702,11 @@ function App(){
   const noSave=()=>{};
   const isViewerLike=role==="viewer"||role==="sched_editor";
   const canSaveSched=role==="admin"||role==="sched_editor";
-  const safePush=role==="admin"?pushSnap:noSave;
+  const safePush=(role==="admin"||role==="sched_editor")?pushSnap:noSave;
+  const activePushSnap=canSaveSched?(isDraftView?pushDraftSnap:pushSnap):noSave;
+  const activeSetSched=isDraftView
+    ?(fn=>setDraftWeek(prev=>{if(!prev)return prev;const s=typeof fn==='function'?fn(prev.sched):fn;return{...prev,sched:s};}))
+    :setSched;
   const roleColor={admin:"#0f172a",teacher:"#0d9488",student:"#065f46",agency:"#1a1f3c",viewer:"#4b5563",sched_editor:"#1d4ed8"}[role]||"#0f172a";
 
   /* ── Week label for header ── */
@@ -9916,7 +9915,7 @@ function App(){
   function toggleAbsent(t){if(isArchiveView)return;setAbsentSets(prev=>{const n={...prev};const s=new Set(n[selDay]||[]);s.has(t)?s.delete(t):s.add(t);n[selDay]=s;return n;});}
   function setDaySubs(fn){if(isArchiveView)return;setSubsByDay(prev=>{const n={...prev};n[selDay]=fn(n[selDay]||{});return n;});}
 
-  const PAGES=[
+  const ALL_PAGES=[
     {id:"management",icon:"📋",label:"Student Management"},
     {id:"studentlist",icon:"📃",label:"Current Student List"},
     {id:"schedule",icon:"📅",label:"Current Student Schedule"},
@@ -9925,6 +9924,8 @@ function App(){
     {id:"meal",icon:"🍽️",label:"Meal Plan"},
     {id:"agency",icon:"🏢",label:"Agency Pipeline"},
   ];
+  const SCHED_EDITOR_PAGES=new Set(["management","studentlist","schedule","teachers"]);
+  const PAGES=role==="sched_editor"?ALL_PAGES.filter(p=>SCHED_EDITOR_PAGES.has(p.id)):ALL_PAGES;
   const isSchedTab=schedTab==="teacher"||schedTab==="student";
 
   return(
