@@ -225,19 +225,26 @@ async function loadFromSupabase() {
   } catch(e) { console.error('Supabase load failed:', e); return false; }
 }
 
-/* Auto-sync 3 seconds after any data change */
-const _origSetItem = localStorage.setItem.bind(localStorage);
-localStorage.setItem = function(key, value) {
-  _origSetItem(key, value);
-  if (HANA_SYNC_KEYS.includes(key)) {
-    clearTimeout(_syncTimer);
-    _syncTimer = setTimeout(syncToSupabase, 3000);
-  }
-};
+/* triggerSync: call this anywhere to schedule a Supabase sync in 3s */
+function triggerSync(){
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(syncToSupabase, 3000);
+}
+
+/* Auto-sync: override localStorage.setItem for Chrome/Firefox.
+   Safari blocks this override, so we also call triggerSync() directly from React useEffects. */
+try{
+  const _origSetItem = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = function(key, value) {
+    _origSetItem(key, value);
+    if (HANA_SYNC_KEYS.includes(key)) triggerSync();
+  };
+}catch(e){ console.warn('localStorage.setItem override failed (Safari) — using direct triggerSync'); }
 
 /* Manual controls available in browser console */
 window.syncToSupabase = syncToSupabase;
 window.loadFromSupabase = loadFromSupabase;
+window.triggerSync = triggerSync;
 </script>
 
 <script>
@@ -9488,14 +9495,17 @@ function App(){
   const cellData=snap.cellData||{};
   const groupRosters=snap.groupRosters||{};
   const kanbanCards=snap.kanbanCards||[];
-  /* Persist kanban cards + sched + rooms + rosters + absent/subs to localStorage on every change */
-  React.useEffect(()=>{lsSave(kanbanCards);},[kanbanCards]);
-  React.useEffect(()=>{lsSaveSched(sched);},[sched]);
-  React.useEffect(()=>{lsSaveCellData(cellData);},[cellData]);
-  React.useEffect(()=>{lsSaveRooms1on1(rooms1on1);},[rooms1on1]);
-  React.useEffect(()=>{lsSaveGroupRosters(groupRosters);},[groupRosters]);
-  React.useEffect(()=>{lsSaveAbsentSets(absentSets);},[absentSets]);
-  React.useEffect(()=>{lsSaveSubsByDay(subsByDay);},[subsByDay]);
+  /* Persist to localStorage + trigger Supabase sync on every change.
+     Combined into one effect so Safari (which blocks localStorage.setItem override)
+     still syncs reliably via window.triggerSync(). Skip sync on first mount. */
+  const _syncMountRef=React.useRef(false);
+  React.useEffect(()=>{
+    lsSave(kanbanCards);lsSaveSched(sched);lsSaveCellData(cellData);
+    lsSaveRooms1on1(rooms1on1);lsSaveGroupRosters(groupRosters);
+    lsSaveAbsentSets(absentSets);lsSaveSubsByDay(subsByDay);
+    if(_syncMountRef.current){window.triggerSync();}
+    else{_syncMountRef.current=true;}
+  },[kanbanCards,sched,cellData,rooms1on1,groupRosters,absentSets,subsByDay]);
   /* ── Active students: draft view uses current+incoming; regular view uses current+leaving ── */
   const activeStudents=useMemo(()=>{
     const statuses=isDraftView?["current","incoming"]:["current","leaving","incoming"];
@@ -9510,6 +9520,7 @@ function App(){
   const[teacherMeta,setTeacherMeta]=useState(()=>{
     try{return JSON.parse(localStorage.getItem("hana_teacher_meta")||"{}");}catch{return{};}
   });
+  const _teacherMetaMountRef=React.useRef(false);
   React.useEffect(()=>{
     try{localStorage.setItem("hana_teacher_meta",JSON.stringify(teacherMeta));}catch(e){}
     /* Rebuild global TEACHERS: base + any extras added via UI */
@@ -9518,6 +9529,8 @@ function App(){
     /* Rebuild TEACHER_CODE for extras */
     const maxCode=Math.max(...Object.values(TEACHER_CODE),...extras.map(t=>teacherMeta[t]?.code||0));
     extras.forEach(t=>{if(!TEACHER_CODE[t])TEACHER_CODE[t]=teacherMeta[t]?.code||maxCode+1;});
+    if(_teacherMetaMountRef.current)window.triggerSync();
+    else _teacherMetaMountRef.current=true;
   },[teacherMeta]);
   function pushSnap(changes){
     setHist(({hist,hIdx})=>{
@@ -9527,6 +9540,19 @@ function App(){
       return{hist:newHist,hIdx:newHist.length-1};
     });
   }
+  /* ── Auto-load from Supabase once per browser session (fixes Mac/Safari cross-device sync) ── */
+  React.useEffect(()=>{
+    if(!sessionStorage.getItem('_hana_sb_loaded')){
+      sessionStorage.setItem('_hana_sb_loaded','1');
+      loadFromSupabase().then(ok=>{
+        if(ok){
+          console.log('Supabase data loaded — reloading to apply latest data');
+          window.location.reload();
+        }
+      });
+    }
+  },[]);
+
   function setSched(fn){pushSnap({sched:typeof fn==='function'?fn(sched):fn});}
   function setRooms1on1(fn){pushSnap({rooms1on1:typeof fn==='function'?fn(rooms1on1):fn});}
   /* Setter that routes to draft or main snap depending on current view mode */
@@ -10114,7 +10140,6 @@ class ErrorBoundary extends React.Component {
               {this.state.info?.componentStack}
             </pre>
             <button onClick={()=>this.setState({err:null,info:null})} style={{marginTop:12,padding:"8px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700}}>Retry</button>
-       
           </div>
         </div>
       );
