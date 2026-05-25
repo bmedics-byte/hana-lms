@@ -7257,6 +7257,23 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
     }
   }
 
+  async function handleFlightTicket(file){
+    if(!file)return;
+    if(file.size>5*1024*1024)return alert("File too large (max 5MB)");
+    try{
+      const ext=(file.name.split(".").pop()||"jpg").toLowerCase();
+      const path="tickets/ticket_"+Date.now()+"."+ext;
+      const{error:upErr}=await _sb.storage.from("hana-attachments").upload(path,file,{contentType:file.type});
+      if(upErr)throw upErr;
+      const{data:{publicUrl}}=_sb.storage.from("hana-attachments").getPublicUrl(path);
+      updFlight({flightTicket:publicUrl});
+    }catch(err){
+      const r=new FileReader();
+      r.onload=ev=>updFlight({flightTicket:ev.target.result});
+      r.readAsDataURL(file);
+    }
+  }
+
   function genLoa(){const t=makeLoaText(draft);setLoaText(t);save({...draft,acceptanceLetter:{...draft.acceptanceLetter,text:t}});}
   function saveLoa(){save({...draft,acceptanceLetter:{...draft.acceptanceLetter,text:loaText}});}
   function confirmLoa(){
@@ -7524,7 +7541,7 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
           <div style={{marginBottom:16}}>
             <div style={LBL}>👤 Consultant</div>
             <input style={INP} value={draft.consultant||""} onChange={ev=>upd({consultant:ev.target.value})}
-              placeholder="담당 상담원 이름 (e.g. Johnny)"/>
+              placeholder="Consultant (e.g. Johnny)"/>
           </div>
           {draft.members.map((m,i)=>(
             <div key={i} style={{background:"white",borderRadius:12,padding:"14px 16px",marginBottom:12,border:`1.5px solid ${i===0?TEAL_BORDER:"#e2e8f0"}`,borderLeft:`4px solid ${i===0?TEAL:"#cbd5e1"}`,boxShadow:"0 1px 6px rgba(0,0,0,.04)"}}>
@@ -7533,12 +7550,16 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
                 {draft.members.length>1&&<button onClick={()=>removeMember(i)} style={{...B,background:"#fee2e2",color:"#dc2626",padding:"4px 10px",fontSize:11}}>− Remove</button>}
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-                <div><div style={LBL}>Name (LAST, FIRST)</div>
+                <div><div style={LBL}>Name</div>
                   <input style={INP} value={m.name} onChange={ev=>updMember(i,{...m,name:ev.target.value})} placeholder="LIU, CHIA-TANG"/></div>
                 <div><div style={LBL}>Nationality</div>
                   <select style={INP} value={m.nationality} onChange={ev=>updMember(i,{...m,nationality:ev.target.value})}>
                     {NATIONALITIES.map(n=><option key={n} value={n}>{n}</option>)}
                   </select></div>
+              </div>
+              <div style={{marginBottom:10}}>
+                <div style={LBL}>Nickname</div>
+                <input style={INP} value={m.nickname||""} onChange={ev=>updMember(i,{...m,nickname:ev.target.value})} placeholder="e.g. LUNA"/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr 1.2fr",gap:10,marginBottom:10}}>
                 <div><div style={LBL}>Birth Year</div>
@@ -7632,14 +7653,27 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
                   value={m.specialRequests||""} onChange={ev=>updMember(i,{...m,specialRequests:ev.target.value})}
                   placeholder="e.g. Nut allergy / Female teacher preferred / Improve speaking ..."/>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <label style={{...B,background:TEAL_BG,color:TEAL,border:`1.5px solid ${TEAL_BORDER}`,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5}}>
-                  📎 Passport Photo (optional)
-                  <input type="file" accept="image/*" style={{display:"none"}} onChange={ev=>handlePassport(i,ev.target.files[0])}/>
-                </label>
-                {m.passportPhoto&&<><span style={{fontSize:11,color:"#16a34a",fontWeight:700}}>✓ Attached</span>
-                  <button onClick={()=>updMember(i,{...m,passportPhoto:null})} style={{...B,background:"#fee2e2",color:"#dc2626",padding:"3px 8px",fontSize:11}}>✕</button>
-                  <img src={m.passportPhoto} style={{width:40,height:40,objectFit:"cover",borderRadius:8,border:`2px solid ${TEAL_BORDER}`}}/></>}
+              <div style={{marginTop:8}}>
+                <div style={{fontSize:9,color:TEAL,fontWeight:700,marginBottom:4}}>📎 Passport Photo (optional)</div>
+                <div
+                  onDragOver={ev=>{ev.preventDefault();ev.currentTarget.style.borderColor=TEAL;ev.currentTarget.style.background="#ccfbf1";}}
+                  onDragLeave={ev=>{ev.currentTarget.style.borderColor=TEAL_BORDER;ev.currentTarget.style.background=TEAL_BG;}}
+                  onDrop={ev=>{ev.preventDefault();ev.currentTarget.style.borderColor=TEAL_BORDER;ev.currentTarget.style.background=TEAL_BG;const file=ev.dataTransfer.files[0];if(file)handlePassport(i,file);}}
+                  style={{border:`2px dashed ${TEAL_BORDER}`,borderRadius:10,padding:"12px 16px",background:TEAL_BG,textAlign:"center",fontSize:11,color:TEAL,transition:"all .15s"}}
+                >
+                  <label style={{cursor:"pointer",display:"block"}}>
+                    {m.passportPhoto
+                      ?<span style={{color:"#16a34a",fontWeight:700}}>✓ Passport Attached — <span style={{textDecoration:"underline"}}>Replace</span></span>
+                      :<span>📂 Drop passport here or <span style={{textDecoration:"underline"}}>click to browse</span></span>}
+                    <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={ev=>{if(ev.target.files[0])handlePassport(i,ev.target.files[0]);ev.target.value="";}}/>
+                  </label>
+                </div>
+                {m.passportPhoto&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
+                    <img src={m.passportPhoto} style={{width:40,height:40,objectFit:"cover",borderRadius:8,border:`2px solid ${TEAL_BORDER}`}}/>
+                    <button onClick={()=>updMember(i,{...m,passportPhoto:null})} style={{...B,background:"#fee2e2",color:"#dc2626",padding:"3px 8px",fontSize:11}}>✕ Remove</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -7706,6 +7740,29 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
           </div>
           {draft.flightInfo?.pickupRequired?(
             <>
+              {/* Flight ticket upload (mandatory for pickup) */}
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:9,color:"#c2410c",fontWeight:700,marginBottom:4}}>✈️ Flight Ticket Copy <span style={{color:"#ef4444"}}>(required)</span></div>
+                <div
+                  onDragOver={ev=>{ev.preventDefault();ev.currentTarget.style.borderColor="#c2410c";ev.currentTarget.style.background="#fff7ed";}}
+                  onDragLeave={ev=>{ev.currentTarget.style.borderColor="#fed7aa";ev.currentTarget.style.background="#fffbeb";}}
+                  onDrop={ev=>{ev.preventDefault();ev.currentTarget.style.borderColor="#fed7aa";ev.currentTarget.style.background="#fffbeb";const file=ev.dataTransfer.files[0];if(file)handleFlightTicket(file);}}
+                  style={{border:"2px dashed #fed7aa",borderRadius:10,padding:"12px 16px",background:"#fffbeb",textAlign:"center",fontSize:11,color:"#c2410c",transition:"all .15s"}}
+                >
+                  <label style={{cursor:"pointer",display:"block"}}>
+                    {draft.flightInfo?.flightTicket
+                      ?<span style={{color:"#16a34a",fontWeight:700}}>✓ Ticket Attached — <span style={{textDecoration:"underline"}}>Replace</span></span>
+                      :<span>📂 Drop flight ticket here or <span style={{textDecoration:"underline"}}>click to browse</span></span>}
+                    <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={ev=>{if(ev.target.files[0])handleFlightTicket(ev.target.files[0]);ev.target.value="";}}/>
+                  </label>
+                </div>
+                {draft.flightInfo?.flightTicket&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
+                    <a href={draft.flightInfo.flightTicket} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#1d4ed8",textDecoration:"underline"}}>📄 View Ticket</a>
+                    <button onClick={()=>updFlight({flightTicket:null})} style={{...B,background:"#fee2e2",color:"#dc2626",padding:"3px 8px",fontSize:11}}>✕ Remove</button>
+                  </div>
+                )}
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
                 <div><div style={{fontSize:9,color:"#64748b",fontWeight:600,marginBottom:2}}>Flight No.</div>
                   <input style={INP} value={draft.flightInfo.flightNumber} onChange={ev=>updFlight({flightNumber:ev.target.value})} placeholder="JX791"/></div>
@@ -8419,7 +8476,7 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
       createdAt:new Date().toISOString(),
       cardType:"",
       consultant:"",
-      members:[{name:"",birthYear:"",birthMonth:"",birthDay:"",nationality:"Taiwanese",course:"",roomType:"",roomNumber:"",studyStart:"",studyEnd:"",passportPhoto:null,specialRequests:""}],
+      members:[{name:"",nickname:"",birthYear:"",birthMonth:"",birthDay:"",nationality:"Taiwanese",course:"",roomType:"",roomNumber:"",studyStart:"",studyEnd:"",passportPhoto:null,specialRequests:""}],
       studyStart:"",studyEnd:"",
       acceptanceLetter:{text:"",confirmed:false,confirmedAt:null},
       flightInfo:{pickupRequired:true,flightNumber:"",airport:"Clark",arrivalDate:"",arrivalTime:""},
@@ -8460,9 +8517,10 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
         ...(entry.acceptanceLetter?.text?[{id:"att_loa",name:"Letter_of_Acceptance.txt",ftype:"text/plain",data:"data:text/plain;base64,"+btoa(unescape(encodeURIComponent(entry.acceptanceLetter.text))),size:entry.acceptanceLetter.text.length,uploadedAt:new Date().toISOString()}]:[]),
         ...((entry.pickupLetter?.text&&entry.flightInfo?.pickupRequired)?[{id:"att_pu",name:"Pickup_Confirmation.txt",ftype:"text/plain",data:"data:text/plain;base64,"+btoa(unescape(encodeURIComponent(entry.pickupLetter.text))),size:entry.pickupLetter.text.length,uploadedAt:new Date().toISOString()}]:[]),
         ...entry.members.filter(m=>m.passportPhoto).map((m,i)=>({id:"att_pp_"+i,name:`Passport_${(m.name||"Student").replace(/,/g,"_")}.jpg`,ftype:"image/jpeg",data:m.passportPhoto,size:0,uploadedAt:new Date().toISOString()})),
+        ...(entry.flightInfo?.flightTicket?[{id:"att_ticket",name:"Flight_Ticket.jpg",ftype:"image/jpeg",data:entry.flightInfo.flightTicket,size:0,uploadedAt:new Date().toISOString()}]:[]),
       ],
       members:entry.members.map(m=>({
-        name:m.name,gender:"",birthYear:m.birthYear,birthMonth:m.birthMonth,birthDay:m.birthDay,
+        name:m.name,nickname:m.nickname||"",gender:"",birthYear:m.birthYear,birthMonth:m.birthMonth,birthDay:m.birthDay,
         nationality:m.nationality,
         studyStart:m.studyStart||entry.studyStart,
         studyEnd:m.studyEnd||entry.studyEnd,
