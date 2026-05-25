@@ -3209,7 +3209,7 @@ function generatePrintHTML(members, cardId, bannerTop, bannerBottom){
             <div style="font-size:8.4px;color:rgba(255,255,255,.85);margin-top:2px">app.clarkhana.com</div>
           </div>
         </div>`;
-    return `<div style="width:340px;aspect-ratio:3/5;background:white;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.15);font-family:Arial,sans-serif;break-inside:avoid;page-break-inside:avoid;display:flex;flex-direction:column">
+    return `<div style="width:340px;height:567px;background:white;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.15);font-family:Arial,sans-serif;break-inside:avoid;page-break-inside:avoid;display:flex;flex-direction:column">
       ${topHTML}
       <div style="display:flex;padding:12px 14px 8px;gap:12px;flex:1">
         <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0">
@@ -3255,7 +3255,8 @@ function StudentIDCard({member, cardId, bannerTop, bannerBottom}){
     });
   },[bannerBottom]);
   return(
-    <div style={{width:"100%",aspectRatio:"3/5",background:"white",borderRadius:14,overflow:"hidden",
+    <div style={{width:"100%",paddingBottom:"166.67%",position:"relative"}}>
+    <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"white",borderRadius:14,overflow:"hidden",
       boxShadow:"0 4px 24px rgba(0,0,0,.18)",fontFamily:"Arial,sans-serif",
       border:"1px solid #cbd5e1",userSelect:"none",display:"flex",flexDirection:"column"}}>
       {/* ── Top banner ── */}
@@ -3329,6 +3330,7 @@ function StudentIDCard({member, cardId, bannerTop, bannerBottom}){
           </div>
         </>
       }
+    </div>
     </div>
   );
 }
