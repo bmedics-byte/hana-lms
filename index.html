@@ -7692,6 +7692,7 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
           <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
             <button onClick={genLoa} style={{...B,background:"#dbeafe",color:"#1d4ed8"}}>⚡ Auto Generate</button>
             {!loaConfirmed&&<button onClick={saveLoa} style={{...B,background:"#f1f5f9",color:"#374151"}}>💾 Save</button>}
+            {!isAdmin&&!loaConfirmed&&(draft.acceptanceLetter?.text?.trim()||loaText.trim())&&<span style={{fontSize:11,color:"#0284c7",fontWeight:700,display:"flex",alignItems:"center",gap:4,padding:"4px 10px",background:"#eff6ff",borderRadius:8,border:"1px solid #bfdbfe"}}>⏳ Waiting for admin confirmation</span>}
             {isAdmin&&!loaConfirmed&&<button onClick={confirmLoa} style={{...B,background:"#0284c7",color:"white"}}>✓ Confirm & Issue (Signed)</button>}
             {loaConfirmed&&<button onClick={printLoa} style={{...B,background:"#dc2626",color:"white"}}>⬇ Download PDF</button>}
             {isAdmin&&loaConfirmed&&<button onClick={unconfirmLoa} style={{...B,background:"#fee2e2",color:"#dc2626",fontSize:11}}>Cancel Issue</button>}
@@ -7781,6 +7782,7 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
               <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
                 <button onClick={genPickup} style={{...B,background:"#fed7aa",color:"#c2410c"}}>⚡ Generate Pickup Confirmation</button>
                 {!pickupConfirmed&&<button onClick={savePickup} style={{...B,background:"#f1f5f9",color:"#374151"}}>💾 Save</button>}
+                {!isAdmin&&!pickupConfirmed&&(draft.pickupLetter?.text?.trim()||pickupText.trim())&&<span style={{fontSize:11,color:"#c2410c",fontWeight:700,display:"flex",alignItems:"center",gap:4,padding:"4px 10px",background:"#fff7ed",borderRadius:8,border:"1px solid #fed7aa"}}>⏳ Waiting for admin confirmation</span>}
                 {isAdmin&&!pickupConfirmed&&<button onClick={confirmPickup} style={{...B,background:"#ea580c",color:"white"}}>✓ Confirm & Issue</button>}
                 {pickupConfirmed&&<button onClick={printPickup} style={{...B,background:"#f0fdf4",color:"#16a34a"}}>🖨 Print</button>}
                 {isAdmin&&pickupConfirmed&&<button onClick={unconfirmPickup} style={{...B,background:"#fee2e2",color:"#dc2626",fontSize:11}}>Cancel Issue</button>}
@@ -8496,6 +8498,26 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
     setAgencyPipeline(p=>{const n=p.filter(x=>x.id!==id);lsSaveAgencyPipe(n);return n;});
     if(selId===id)setSelId(null);
   }
+
+  /* Poll Supabase every 30s — admin picks up agency saves, agency picks up admin confirmations */
+  React.useEffect(()=>{
+    const poll=async()=>{
+      try{
+        const{data,error}=await _sb.from('app_data').select('data').eq('id','hana_main').single();
+        if(error||!data?.data)return;
+        const raw=data.data['hana_agency_pipe_v1'];
+        if(!raw)return;
+        const fresh=JSON.parse(raw);
+        setAgencyPipeline(current=>{
+          if(JSON.stringify(current)===raw)return current;
+          console.log('[Sync] Agency pipeline refreshed from Supabase');
+          return fresh;
+        });
+      }catch(e){}
+    };
+    const id=setInterval(poll,30000);
+    return()=>clearInterval(id);
+  },[]);
 
   function createCard(entry){
     if(!confirm("Create student card?"))return;
@@ -9564,6 +9586,13 @@ function App(){
     if(_syncMountRef.current){window.triggerSync();}
     else{_syncMountRef.current=true;}
   },[kanbanCards,sched,cellData,rooms1on1,groupRosters,absentSets,subsByDay]);
+  /* Agency pipeline — separate effect so Safari also syncs it to Supabase */
+  const _agPipeSyncRef=React.useRef(false);
+  React.useEffect(()=>{
+    lsSaveAgencyPipe(agencyPipeline);
+    if(_agPipeSyncRef.current){window.triggerSync();}
+    else{_agPipeSyncRef.current=true;}
+  },[agencyPipeline]);
   /* ── Active students: draft view uses current+incoming; regular view uses current+leaving ── */
   const activeStudents=useMemo(()=>{
     const statuses=isDraftView?["current","incoming"]:["current","leaving","incoming"];
@@ -10227,6 +10256,12 @@ ReactDOM.render(
   },{passive:true});
   document.addEventListener('mouseup',()=>{
     if(!panStart)return;panStart=null;document.body.classList.remove('pan-active');});
+})();
+</script>
+
+</body>
+</html>
+.classList.remove('pan-active');});
 })();
 </script>
 
