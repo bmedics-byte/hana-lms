@@ -177,6 +177,7 @@
     .kb-drop-zone{height:56px;border-radius:10px;border:2px dashed #5eead4;background:#f0fdfa;margin-bottom:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#0d9488;font-weight:600;animation:dropzone .2s ease;}
     @keyframes dropline{from{transform:scaleX(.5);opacity:0}to{transform:scaleX(1);opacity:1}}
     @keyframes dropzone{from{opacity:0;transform:scaleY(.8)}to{opacity:1;transform:scaleY(1)}}
+    @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
     .member-form{padding:12px;background:#f8fafc;border-radius:10px;margin-bottom:8px;position:relative;border:1px solid #e2e8f0;}
   </style>
 </head>
@@ -7360,54 +7361,69 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
         <img src="${driverPhoto}" style="width:160px;height:160px;object-fit:cover;border-radius:50%;border:4px solid #0d9488;box-shadow:0 4px 16px rgba(13,148,136,.25)"/>
         <div style="font-size:11px;color:#64748b;font-weight:600;letter-spacing:1px;text-transform:uppercase">Your Driver / Guide</div>
       </div>`:"";
+    const passengerRows=draft.members.filter(m=>m.name).map(m=>{
+      const parts=[];
+      if(m.name)parts.push(m.name.toUpperCase());
+      if(m.nationality)parts.push(`(${m.nationality})`);
+      return parts.join(" ");
+    }).join("<br/>");
+    const passengerDisp=passengerRows||(disp||"—");
+    const airportLabel={"Clark":"Clark International Airport (CRK)","Manila1":"NAIA Terminal 1","Manila2":"NAIA Terminal 2","Manila3":"NAIA Terminal 3"}[fl.airport]||fl.airport||"—";
     const html=`
       <!-- Header banner -->
-      <div style="background:linear-gradient(135deg,#0a4a5c 0%,#0d9488 60%,#14b8a6 100%);padding:22px 40px;display:flex;align-items:center;gap:16px">
-        ${logo?`<img src="${logo}" style="width:56px;height:56px;object-fit:cover;border-radius:10px;border:2px solid rgba(255,255,255,.3)"/>`:""}
-        <div>
-          <div style="color:white;font-size:22px;font-weight:900;letter-spacing:1.5px;font-family:Arial,sans-serif">HANA ACADEMY</div>
-          <div style="color:rgba(255,255,255,.8);font-size:11px;letter-spacing:2px;font-weight:600;margin-top:2px">GLOBAL EDUCATION HUB · CLARK, PHILIPPINES</div>
+      <div style="background:linear-gradient(135deg,#0a4a5c 0%,#0d9488 60%,#14b8a6 100%);padding:24px 40px;display:flex;align-items:center;gap:20px">
+        ${logo?`<img src="${logo}" style="width:60px;height:60px;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,.35);box-shadow:0 2px 10px rgba(0,0,0,.2)"/>`:""}
+        <div style="flex:1">
+          <div style="color:white;font-size:24px;font-weight:900;letter-spacing:2px;font-family:Arial,sans-serif;line-height:1.1">HANA ACADEMY</div>
+          <div style="color:rgba(255,255,255,.75);font-size:10.5px;letter-spacing:2.5px;font-weight:600;margin-top:4px;font-family:Arial,sans-serif">GLOBAL EDUCATION HUB · CLARK, PHILIPPINES</div>
         </div>
-        <div style="margin-left:auto;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.35);border-radius:8px;padding:8px 16px;text-align:center">
-          <div style="color:rgba(255,255,255,.75);font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase">Document</div>
-          <div style="color:white;font-size:13px;font-weight:900;letter-spacing:1px">PICK-UP NOTICE</div>
+        <div style="background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.4);border-radius:10px;padding:10px 18px;text-align:center;min-width:110px">
+          <div style="color:rgba(255,255,255,.7);font-size:8px;font-weight:800;letter-spacing:3px;text-transform:uppercase;font-family:Arial,sans-serif">DOCUMENT</div>
+          <div style="color:white;font-size:14px;font-weight:900;letter-spacing:1.5px;line-height:1.2;font-family:Arial,sans-serif;margin-top:3px">PICK-UP<br/>NOTICE</div>
         </div>
       </div>
-      <!-- Title bar -->
-      <div style="background:#f0fdfa;border-bottom:2px solid #ccfbf1;padding:12px 40px;display:flex;align-items:center;justify-content:space-between">
-        <div style="font-size:18px;font-weight:900;color:#0f4c5c;letter-spacing:3px;font-family:'Courier New',monospace">[ ARRIVAL PICK-UP INFORMATION ]</div>
-        <div style="font-size:11px;color:#64748b;font-weight:600">${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
+      <!-- Section title -->
+      <div style="background:#f0fdfa;border-bottom:2px solid #99f6e4;padding:14px 40px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:15px;font-weight:900;color:#0f4c5c;letter-spacing:4px;font-family:'Courier New',monospace;text-transform:uppercase">✈ Arrival Pick-Up Information</div>
+        <div style="font-size:10px;color:#64748b;font-weight:600;font-family:Arial,sans-serif;white-space:nowrap">${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
       </div>
-      <div class="body-content" style="padding:24px 40px 32px">
+      <div class="body-content" style="padding:28px 40px 36px;font-family:Arial,sans-serif">
         ${driverBlock}
-        <!-- Info table -->
-        <table style="width:100%;border-collapse:collapse;margin-top:${driverBlock?8:16}px;font-family:Arial,sans-serif">
-          <thead>
-            <tr style="background:linear-gradient(135deg,#0a4a5c,#0d9488)">
-              <th style="padding:10px 16px;color:rgba(255,255,255,.8);font-size:10px;font-weight:700;letter-spacing:2px;text-align:left;text-transform:uppercase;width:38%">FIELD</th>
-              <th style="padding:10px 16px;color:rgba(255,255,255,.8);font-size:10px;font-weight:700;letter-spacing:2px;text-align:left;text-transform:uppercase">DETAILS</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style="border-bottom:1px solid #e2e8f0;background:white">
-              <td style="padding:14px 16px;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase">✈ Flight Info &amp; Arrival</td>
-              <td style="padding:14px 16px;font-size:14px;font-weight:800;color:#0f172a">${fl.flightNumber||"___"}&nbsp;&nbsp;|&nbsp;&nbsp;${dateDisp} ${fl.arrivalTime||""}&nbsp;&nbsp;|&nbsp;&nbsp;${AIRPORTS[fl.airport]||fl.airport||""}</td>
-            </tr>
-            <tr style="border-bottom:1px solid #e2e8f0;background:#f8fafc">
-              <td style="padding:14px 16px;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase">👤 Passenger(s)</td>
-              <td style="padding:14px 16px;font-size:14px;font-weight:800;color:#0f172a">${disp}</td>
-            </tr>
-          </tbody>
-        </table>
-        <!-- Contact banner -->
-        <div style="margin-top:20px;background:linear-gradient(135deg,#fef08a,#fde047);border:2px solid #facc15;border-radius:10px;padding:16px 24px;text-align:center">
-          <div style="font-size:13px;font-weight:900;color:#713f12;letter-spacing:.5px;margin-bottom:6px">🎓 Welcome to HANA Academy!</div>
-          <div style="font-size:12px;font-weight:700;color:#78350f">
-            📞 Mr. Bryan Ko &nbsp;·&nbsp; 0926 727 4196 &nbsp;&nbsp;|&nbsp;&nbsp; 🚗 Driver Joel &nbsp;·&nbsp; 0966 633 8642
+        <!-- Info cards grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:${driverBlock?10:4}px">
+          <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 20px">
+            <div style="font-size:9px;font-weight:800;color:#0d9488;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">✈ Flight Number</div>
+            <div style="font-size:22px;font-weight:900;color:#0f172a;letter-spacing:1px">${fl.flightNumber||"—"}</div>
+          </div>
+          <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 20px">
+            <div style="font-size:9px;font-weight:800;color:#0d9488;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">🕐 Arrival Time</div>
+            <div style="font-size:22px;font-weight:900;color:#0f172a;letter-spacing:1px">${fl.arrivalTime||"—"}</div>
+          </div>
+          <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 20px">
+            <div style="font-size:9px;font-weight:800;color:#0d9488;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">📅 Arrival Date</div>
+            <div style="font-size:16px;font-weight:900;color:#0f172a">${dateDisp||"—"}</div>
+          </div>
+          <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 20px">
+            <div style="font-size:9px;font-weight:800;color:#0d9488;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">🛬 Airport</div>
+            <div style="font-size:13px;font-weight:800;color:#0f172a;line-height:1.3">${airportLabel}</div>
           </div>
         </div>
-        <!-- Footer note -->
-        <div style="margin-top:20px;padding-top:16px;border-top:1px dashed #cbd5e1;display:flex;justify-content:space-between;align-items:center">
+        <!-- Passenger block -->
+        <div style="margin-top:14px;background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1.5px solid #bfdbfe;border-radius:10px;padding:18px 24px">
+          <div style="font-size:9px;font-weight:800;color:#1d4ed8;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">👤 Passenger(s)</div>
+          <div style="font-size:16px;font-weight:900;color:#1e3a8a;line-height:1.8">${passengerDisp}</div>
+        </div>
+        <!-- Contact banner -->
+        <div style="margin-top:16px;background:linear-gradient(135deg,#fef9c3,#fef08a);border:2px solid #fde047;border-radius:10px;padding:16px 24px;text-align:center">
+          <div style="font-size:13px;font-weight:900;color:#713f12;letter-spacing:.5px;margin-bottom:8px">🎓 Welcome to HANA Academy!</div>
+          <div style="display:flex;justify-content:center;gap:32px;font-size:12px;font-weight:700;color:#78350f">
+            <div>📞 Mr. Bryan Ko<br/><span style="font-size:14px;letter-spacing:.5px">0926 727 4196</span></div>
+            <div style="border-left:1.5px solid #f59e0b"></div>
+            <div>🚗 Driver Joel<br/><span style="font-size:14px;letter-spacing:.5px">0966 633 8642</span></div>
+          </div>
+        </div>
+        <!-- Footer -->
+        <div style="margin-top:18px;padding-top:14px;border-top:1px dashed #cbd5e1;display:flex;justify-content:space-between;align-items:center">
           <div style="font-size:10px;color:#94a3b8;font-style:italic">Please show this document to the driver upon arrival.</div>
           <div style="font-size:10px;color:#94a3b8;font-weight:600">app.clarkhana.com</div>
         </div>
@@ -7777,7 +7793,7 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
                 <div><div style={{fontSize:9,color:"#64748b",fontWeight:600,marginBottom:2}}>Arrival Date</div>
                   <input type="date" lang="en" style={INP} value={draft.flightInfo.arrivalDate} onChange={ev=>updFlight({arrivalDate:ev.target.value})}/></div>
                 <div><div style={{fontSize:9,color:"#64748b",fontWeight:600,marginBottom:2}}>Arrival Time</div>
-                  <input type="time" style={INP} value={draft.flightInfo.arrivalTime} onChange={ev=>updFlight({arrivalTime:ev.target.value})}/></div>
+                  <input type="time" lang="en" style={INP} value={draft.flightInfo.arrivalTime} onChange={ev=>updFlight({arrivalTime:ev.target.value})}/></div>
               </div>
               <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
                 <button onClick={genPickup} style={{...B,background:"#fed7aa",color:"#c2410c"}}>⚡ Generate Pickup Confirmation</button>
@@ -8499,25 +8515,27 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
     if(selId===id)setSelId(null);
   }
 
-  /* Poll Supabase every 30s — admin picks up agency saves, agency picks up admin confirmations */
+  /* Poll Supabase — admin picks up agency saves, agency picks up admin confirmations */
+  const[refreshing,setRefreshing]=React.useState(false);
+  const[lastRefresh,setLastRefresh]=React.useState(null);
+  const pollNow=React.useCallback(async()=>{
+    try{
+      const{data,error}=await _sb.from('app_data').select('data').eq('id','hana_main').single();
+      if(error||!data?.data)return;
+      const raw=data.data['hana_agency_pipe_v1'];
+      if(!raw)return;
+      const fresh=JSON.parse(raw);
+      setAgencyPipeline(current=>{
+        if(JSON.stringify(current)===raw)return current;
+        console.log('[Sync] Agency pipeline refreshed from Supabase');
+        return fresh;
+      });
+    }catch(e){}
+  },[setAgencyPipeline]);
   React.useEffect(()=>{
-    const poll=async()=>{
-      try{
-        const{data,error}=await _sb.from('app_data').select('data').eq('id','hana_main').single();
-        if(error||!data?.data)return;
-        const raw=data.data['hana_agency_pipe_v1'];
-        if(!raw)return;
-        const fresh=JSON.parse(raw);
-        setAgencyPipeline(current=>{
-          if(JSON.stringify(current)===raw)return current;
-          console.log('[Sync] Agency pipeline refreshed from Supabase');
-          return fresh;
-        });
-      }catch(e){}
-    };
-    const id=setInterval(poll,30000);
+    const id=setInterval(pollNow,30000);
     return()=>clearInterval(id);
-  },[]);
+  },[pollNow]);
 
   function createCard(entry){
     if(!confirm("Create student card?"))return;
@@ -8894,6 +8912,42 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
           )}
         </div>
       )}
+    </div>
+    {/* ── Fixed REFRESH button ── */}
+    <div style={{position:"fixed",bottom:24,right:24,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+      {lastRefresh&&(
+        <div style={{fontSize:10,color:"#475569",background:"white",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",boxShadow:"0 1px 4px rgba(0,0,0,.1)"}}>
+          Updated {lastRefresh}
+        </div>
+      )}
+      <button
+        onClick={async()=>{
+          setRefreshing(true);
+          await pollNow();
+          const now=new Date();
+          setLastRefresh(now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit"}));
+          setRefreshing(false);
+        }}
+        disabled={refreshing}
+        style={{
+          display:"flex",alignItems:"center",gap:8,
+          padding:"11px 20px",
+          background:refreshing?"#f1f5f9":"linear-gradient(135deg,#0a4a5c,#0d9488)",
+          color:refreshing?"#64748b":"white",
+          border:"none",borderRadius:12,
+          fontSize:13,fontWeight:800,
+          cursor:refreshing?"not-allowed":"pointer",
+          boxShadow:"0 4px 18px rgba(13,148,136,.35)",
+          letterSpacing:.5,
+          transition:"all .2s",
+          minWidth:130,justifyContent:"center",
+        }}
+      >
+        <span style={{fontSize:16,display:"inline-block",animation:refreshing?"spin 1s linear infinite":"none"}}>
+          {refreshing?"⟳":"🔄"}
+        </span>
+        {refreshing?"Syncing…":"Refresh"}
+      </button>
     </div>
   );
 }
@@ -10262,6 +10316,66 @@ ReactDOM.render(
 </body>
 </html>
 .classList.remove('pan-active');});
+})();
+</script>
+
+</body>
+</html>
+ed={displaySched} cellData={displayCellData} groupRosters={displayGroupRosters} selDay={selDay} subsByDay={subsByDay} absentSet={absentSet} daySubs={daySubs} rooms1on1={displayRooms1on1} studentData={mergedStudentData} pushSnap={activePushSnap} isAdmin onTeacherClick={setTeacherPopup} messages={messages} onOpenMessenger={setMessengerOpen}/>}
+{schedTab==="student"&&<StudentScheduleGrid sched={displaySched} setSched={activeSetSched} absentSet={absentSet} daySubs={daySubs} isAdmin rooms1on1={displayRooms1on1} onStudentClick={setStudentDailyPopup} groupRosters={displayGroupRosters} studentData={mergedStudentData} kanbanCards={kanbanCards}/>}
+{schedTab==="rooms1on1"&&<OneOnOneClassroomsPage rooms1on1={displayRooms1on1} setRooms1on1={setDisplayRooms1on1}/>}
+{schedTab==="roomsGroup"&&<GroupClassroomsPage cellData={displayCellData} groupRosters={displayGroupRosters} setGroupRosters={setGroupRosters} selDay={selDay} studentData={mergedStudentData}/>}
+{isSchedTab&&<div style={{marginTop:10,fontSize:11,color:"#94a3b8"}}>✓ Both schedules sync in real-time. Room assignments are managed in the 1on1 / Group Classrooms tabs.</div>}
+</>
+)}
+</div>{/* end paddingTop wrapper */}
+</div>
+</div>
+);
+}
+
+class ErrorBoundary extends React.Component {
+  constructor(props){super(props);this.state={err:null,info:null};}
+  static getDerivedStateFromError(err){return{err};}
+  componentDidCatch(err,info){console.error("React render error:",err,info);this.setState({info});}
+  render(){
+    if(this.state.err){
+      return(<div style={{padding:32,fontFamily:"monospace",background:"#fef2f2",minHeight:"100vh"}}><div style={{maxWidth:700,margin:"0 auto",background:"white",borderRadius:12,padding:24,boxShadow:"0 4px 24px rgba(0,0,0,.1)",border:"2px solid #dc2626"}}><h2 style={{color:"#dc2626",marginBottom:12,fontSize:18}}>⚠️ Runtime Error</h2><pre style={{background:"#f8fafc",padding:12,borderRadius:6,fontSize:12,overflow:"auto",maxHeight:300,color:"#1e293b",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>{String(this.state.err)}{this.state.info?.componentStack}</pre><button onClick={()=>this.setState({err:null,info:null})} style={{marginTop:12,padding:"8px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700}}>Retry</button></div></div>);
+    }
+    return this.props.children;
+  }
+}
+ReactDOM.render(
+  <ErrorBoundary>
+    <App/>
+  </ErrorBoundary>,
+  document.getElementById("root")
+);
+</script>
+<script>
+(()=>{
+  let panStart=null;
+  document.addEventListener('mousedown',e=>{
+    if(e.button!==0)return;
+    if(e.target.closest('button,input,textarea,select,a,label,[role="button"]'))return;
+    panStart={x:e.clientX,y:e.clientY,sx:window.pageXOffset,sy:window.pageYOffset};
+    document.body.classList.add('pan-active');
+  },{passive:true});
+  document.addEventListener('mousemove',e=>{
+    if(!panStart)return;
+    window.scrollTo(panStart.sx+(panStart.x-e.clientX),panStart.sy+(panStart.y-e.clientY));
+  },{passive:true});
+  document.addEventListener('mouseup',()=>{
+    if(!panStart)return;panStart=null;document.body.classList.remove('pan-active');});
+})();
+</script>
+
+</body>
+</html>
+.y-e.clientY));
+  },{passive:true});
+  document.addEventListener('mouseup',()=>{
+    if(!panStart)return;panStart=null;document.body.classList.remove('pan-active');});
 })();
 </script>
 
