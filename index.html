@@ -8137,96 +8137,82 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
   );
 }
 
-                </div>
-              )}
-            </div>
-            {/* ── Action buttons ── */}
-            {role==="admin"&&!isArchiveView&&(
-              <>
-                {/* Confirm Week (current, not yet confirmed) */}
-                {!isDraftView&&weekStatus==="active"&&(
-                  <button onClick={doConfirmWeek}
-                    style={{padding:"5px 12px",background:"rgba(124,58,237,.85)",border:"1px solid rgba(255,255,255,.3)",borderRadius:6,color:"white",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
-                    🔒 Confirm Week
-                  </button>
-                )}
-                {/* Create Draft (only after confirming, only on Wednesdays) */}
-                {!isDraftView&&!draftWeek&&(()=>{
-                  const isWed=new Date().getDay()===3;
-                  const canDraft=weekStatus==="confirmed"&&isWed;
-                  const tip=weekStatus!=="confirmed"?"Confirm this week first":(!isWed?"Available on Wednesdays only":"Create next week's draft");
-                  return(
-                    <button onClick={canDraft?doCreateDraft:undefined}
-                      title={tip}
-                      style={{padding:"5px 12px",background:canDraft?"rgba(245,158,11,.85)":"rgba(156,163,175,.45)",border:"1px solid rgba(255,255,255,.3)",borderRadius:6,color:"white",cursor:canDraft?"pointer":"not-allowed",fontSize:11,fontWeight:700,whiteSpace:"nowrap",opacity:canDraft?1:.7}}>
-                      📝 Create Draft{!isWed&&weekStatus==="confirmed"?" (Wed)":""}
-                    </button>
-                  );
-                })()}
-                {/* Confirm Draft (when viewing draft) */}
-                {isDraftView&&draftWeek?.status!=="confirmed"&&(
-                  <button onClick={doConfirmDraft}
-                    style={{padding:"5px 12px",background:"rgba(124,58,237,.85)",border:"1px solid rgba(255,255,255,.3)",borderRadius:6,color:"white",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
-                    🔒 Confirm Draft
-                  </button>
-                )}
-                {/* Archive Week (manual, current only — Friday or later) */}
-                {!isDraftView&&weekStatus==="confirmed"&&(()=>{
-                  const todayD=new Date();todayD.setHours(0,0,0,0);
-                  const friD=new Date(weekStart+"T12:00:00");friD.setDate(friD.getDate()+4);friD.setHours(0,0,0,0);
-                  const canArchive=todayD>=friD;
-                  return canArchive
-                    ?<button onClick={doArchiveAndAdvance}
-                        style={{padding:"5px 12px",background:"rgba(107,114,128,.75)",border:"1px solid rgba(255,255,255,.3)",borderRadius:6,color:"white",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
-                        📦 Archive Week
-                      </button>
-                    :<div title={`Archive available from Friday (${friD.toLocaleDateString("en-US",{month:"short",day:"numeric"})})`}
-                        style={{padding:"5px 12px",background:"rgba(107,114,128,.3)",border:"1px solid rgba(255,255,255,.15)",borderRadius:6,color:"rgba(255,255,255,.45)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",cursor:"not-allowed",userSelect:"none"}}>
-                        📦 Archive Week
-                        <span style={{fontSize:9,marginLeft:5,opacity:.8}}>(Fri+)</span>
-                      </div>;
-                })()}
-              </>
-            )}
-          </>
-        )}
-        <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700}}>{name}</div><div style={{fontSize:11,opacity:.75,textTransform:"capitalize"}}>{role}</div></div>
-        <button onClick={()=>setUser(null)} style={{padding:"6px 14px",background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.3)",borderRadius:6,color:"white",cursor:"pointer",fontSize:13}}>Logout</button>
-      </div>
-    </div>
-  );
+function App(){
+  /* ── Auth ── */
+  const[user,setUser]=React.useState(null);
 
-  if(role==="teacher")return(
+  /* ── Core scheduling state (hist-based undo/redo) ── */
+  const[hist,setHist]=React.useState(()=>{
+    const wm=lsGetWeekMeta();
+    return{
+      hist:[{
+        kanbanCards:lsLoadKanban(),
+        sched:lsGetSched()||{},
+        weekStart:wm.weekStart,
+        weekStatus:wm.weekStatus||"active",
+        rooms1on1:lsGetRooms1on1()||{},
+        groupRosters:lsGetGroupRosters()||{},
+        absentSets:lsGetAbsentSets()||{},
+        subsByDay:lsGetSubsByDay()||{},
+        cellData:lsGetCellData()||{},
+      }],
+      hIdx:0
+    };
+  });
+  const{kanbanCards,sched,rooms1on1,groupRosters,absentSets,subsByDay,cellData,weekStart,weekStatus}=hist.hist[hist.hIdx];
+  const hIdx=hist.hIdx;
 
-  const[undoStack,setUndoStack]=React.useState([]);
-  const[redoStack,setRedoStack]=React.useState([]);
-  const pushSnap=React.useCallback((snap)=>{
-    setUndoStack(s=>[...s.slice(-49),snap]);
-    setRedoStack([]);
-  },[]);
-  const undo=React.useCallback(()=>{
-    if(!undoStack.length)return;
-    const snap=undoStack[undoStack.length-1];
-    setRedoStack(s=>[...s,{kanbanCards,sched,weekMeta}]);
-    setUndoStack(s=>s.slice(0,-1));
-    if(snap.kanbanCards!==undefined){setKanbanCards(snap.kanbanCards);lsSaveKanban(snap.kanbanCards);}
-    if(snap.sched!==undefined)setSched(snap.sched);
-    if(snap.weekMeta!==undefined)setWeekMeta(snap.weekMeta);
-  },[undoStack,kanbanCards,sched,weekMeta]);
-  const redo=React.useCallback(()=>{
-    if(!redoStack.length)return;
-    const snap=redoStack[redoStack.length-1];
-    setUndoStack(s=>[...s,{kanbanCards,sched,weekMeta}]);
-    setRedoStack(s=>s.slice(0,-1));
-    if(snap.kanbanCards!==undefined){setKanbanCards(snap.kanbanCards);lsSaveKanban(snap.kanbanCards);}
-    if(snap.sched!==undefined)setSched(snap.sched);
-    if(snap.weekMeta!==undefined)setWeekMeta(snap.weekMeta);
-  },[redoStack,kanbanCards,sched,weekMeta]);
-    TEACHERS=[...TEACHERS_BASE,...extras];
-    /* Rebuild TEACHER_CODE for extras */
-    const maxCode=Math.max(...Object.values(TEACHER_CODE),...extras.map(t=>teacherMeta[t]?.code||0));
-    extras.forEach(t=>{if(!TEACHER_CODE[t])TEACHER_CODE[t]=teacherMeta[t]?.code||maxCode+1;});
-  },[teacherMeta]);
+  /* ── Non-undoable state ── */
+  const[draftWeek,setDraftWeek]=React.useState(()=>lsGetDraft());
+  const[archives,setArchivesRaw]=React.useState(()=>lsGetArchives());
+  const[passwords,setPasswords]=React.useState(lsLoadPasswords);
+  const[agencies,setAgenciesRaw]=React.useState(lsLoadAgencies);
+  const[agencyPipeline,setAgencyPipeline]=React.useState(lsLoadAgencyPipe);
+  const[teacherMeta,setTeacherMeta]=React.useState(lsLoadTeacherMeta);
+  const[viewMode,setViewMode]=React.useState("current");
+  const[showArchiveMenu,setShowArchiveMenu]=React.useState(false);
+  const[selDay,setSelDay]=React.useState(()=>{const d=new Date().getDay();return DAYS[Math.max(0,Math.min(d-1,4))]||"Monday";});
+  const[dragSrc,setDragSrc]=React.useState(null);
+  const[dropTarget,setDropTarget]=React.useState(null);
+  const[lunchPeriod,setLunchPeriod_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_lunch_period")||"null");}catch{return null;}});
+  const[dormSheetRoom,setDormSheetRoom]=React.useState(null);
+  const[showDormSheet,setShowDormSheet]=React.useState(false);
+  const[page,setPage]=React.useState("schedule");
+  const[showAddCard,setShowAddCard]=React.useState(false);
+  const[editCard,setEditCard]=React.useState(null);
+  const[selectedCardId,setSelectedCardId]=React.useState(null);
+  const[activeTab,setActiveTab]=React.useState("board");
+  const[schedTab,setSchedTab]=React.useState("teacher");
+  const[messages,setMessages_]=React.useState(lsGetMessages);
+  const[notifications,setNotifications]=React.useState([]);
+  const[showPwMgr,setShowPwMgr]=React.useState(false);
+  const[syncStatus,setSyncStatus]=React.useState("idle");
+  const[teacherPopup,setTeacherPopup]=React.useState(null);
+  const[studentDailyPopup,setStudentDailyPopup]=React.useState(null);
+  const[messengerOpen,setMessengerOpen]=React.useState(null);
+  const[showAutoAssign,setShowAutoAssign]=React.useState(false);
+  const[mealPlan,setMealPlan_]=React.useState(lsGetMealPlan);
+  const[mealDraft,setMealDraft_]=React.useState(null);
+  const[mealArchives,setMealArchives_]=React.useState(()=>[]);
+  const[mealSkips,setMealSkips_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_meal_skips_v1")||"{}");}catch{return{};}});
+  const syncRef=React.useRef(null);
+
+  /* ── Derived from viewMode ── */
+  const isArchiveView=typeof viewMode==="number";
+  const isDraftView=viewMode==="draft";
+
+  /* ── Non-hist helper setters ── */
+  function setArchives(fn){setArchivesRaw(prev=>{const next=typeof fn==="function"?fn(prev):fn;lsSaveArchives(next);return next;});}
+  function setAgencies(fn){setAgenciesRaw(prev=>typeof fn==="function"?fn(prev):fn);}
+  function setLunchPeriod(v){setLunchPeriod_(v);localStorage.setItem("hana_lunch_period",JSON.stringify(v));}
+  function setMessages(v){setMessages_(v);lsSaveMessages(v);}
+  function setMealPlan(v){setMealPlan_(v);lsSaveMealPlan(v);}
+  function setMealDraft(v){setMealDraft_(v);}
+  function setMealArchives(v){setMealArchives_(v);}
+  function setMealSkips(fn){setMealSkips_(prev=>{const next=typeof fn==="function"?fn(prev):fn;localStorage.setItem("hana_meal_skips_v1",JSON.stringify(next));return next;});}
+  function pushNotif(msg,type="info"){const id=Date.now();setNotifications(n=>[...n,{id,msg,type}]);setTimeout(()=>setNotifications(n=>n.filter(x=>x.id!==id)),4000);}
+
+  /* ── Hist-based setters ── */
   function pushSnap(changes){
     setHist(({hist,hIdx})=>{
       const next={...hist[hIdx],...changes};
@@ -8235,212 +8221,203 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
       return{hist:newHist,hIdx:newHist.length-1};
     });
   }
-  function setSched(fn){pushSnap({sched:typeof fn==='function'?fn(sched):fn});}
-  function setRooms1on1(fn){pushSnap({rooms1on1:typeof fn==='function'?fn(rooms1on1):fn});}
-  /* Setter that routes to draft or main snap depending on current view mode */
-  function setDisplayRooms1on1(fn){
-    if(isArchiveView)return; // archive is read-only
-    if(isDraftView){
-      setDraftWeek(prev=>{
-        if(!prev)return prev;
-  /* Persist kanban cards + sched + rooms + rosters + absent/subs to localStorage on every change */
-  React.useEffect(()=>{lsSave(kanbanCards);},[kanbanCards]);
+  function setSched(fn){pushSnap({sched:typeof fn==="function"?fn(sched):fn});}
+  function setRooms1on1(fn){pushSnap({rooms1on1:typeof fn==="function"?fn(rooms1on1):fn});}
+  function setAbsentSets(fn){pushSnap({absentSets:typeof fn==="function"?fn(absentSets):fn});}
+  function setSubsByDay(fn){pushSnap({subsByDay:typeof fn==="function"?fn(subsByDay):fn});}
+  function setCellData(fn){pushSnap({cellData:typeof fn==="function"?fn(cellData):fn});}
+  function setGroupRosters(fn){pushSnap({groupRosters:typeof fn==="function"?fn(groupRosters):fn});}
+  function setWeekStart(s){pushSnap({weekStart:s});}
+  function setWeekStatus(s){pushSnap({weekStatus:s});}
+
+  /* ── Undo/redo ── */
+  const canUndo=hIdx>0;
+  const canRedo=hIdx<hist.hist.length-1;
+  function undo(){setHist(h=>({...h,hIdx:Math.max(0,h.hIdx-1)}));}
+  function redo(){setHist(h=>({...h,hIdx:Math.min(h.hist.length-1,h.hIdx+1)}));}
+
+  /* ── Teacher meta effect ── */
+  React.useEffect(()=>{
+    lsSaveTeacherMeta(teacherMeta);
+    const extras=Object.keys(teacherMeta).filter(t=>teacherMeta[t]?.isExtra&&!TEACHERS_BASE.includes(t));
+    TEACHERS=[...TEACHERS_BASE,...extras];
+    const maxCode=Math.max(0,...Object.values(TEACHER_CODE),...extras.map(t=>teacherMeta[t]?.code||0));
+    extras.forEach(t=>{if(!TEACHER_CODE[t])TEACHER_CODE[t]=teacherMeta[t]?.code||maxCode+1;});
+  },[teacherMeta]);
+
+  /* ── Persistence effects ── */
+  React.useEffect(()=>{lsSaveKanban(kanbanCards);},[kanbanCards]);
   React.useEffect(()=>{lsSaveSched(sched);},[sched]);
   React.useEffect(()=>{lsSaveCellData(cellData);},[cellData]);
   React.useEffect(()=>{lsSaveRooms1on1(rooms1on1);},[rooms1on1]);
   React.useEffect(()=>{lsSaveGroupRosters(groupRosters);},[groupRosters]);
   React.useEffect(()=>{lsSaveAbsentSets(absentSets);},[absentSets]);
   React.useEffect(()=>{lsSaveSubsByDay(subsByDay);},[subsByDay]);
-  function setRoomsGroup(fn){pushSnap({roomsGroup:typeof fn==='function'?fn(roomsGroup):fn});}
-  function setAbsentSets(fn){pushSnap({absentSets:typeof fn==='function'?fn(absentSets):fn});}
-  function setSubsByDay(fn){pushSnap({subsByDay:typeof fn==='function'?fn(subsByDay):fn});}
-  function setCellData(fn){pushSnap({cellData:typeof fn==='function'?fn(cellData):fn});}
-  function setGroupRosters(fn){pushSnap({groupRosters:typeof fn==='function'?fn(groupRosters):fn});}
-  const canUndo=hIdx>0;
-  const canRedo=hIdx<hist.length-1;
-  function undo(){setHist(h=>({...h,hIdx:Math.max(0,h.hIdx-1)}));}
-  function redo(){setHist(h=>({...h,hIdx:Math.min(h.hist.length-1,h.hIdx+1)}));}
-  useEffect(()=>{
+  React.useEffect(()=>{lsSaveWeekMeta({weekStart,weekStatus});},[weekStart,weekStatus]);
+  React.useEffect(()=>{lsSaveDraft(draftWeek);},[draftWeek]);
+
+  /* ── Undo/redo keyboard ── */
+  React.useEffect(()=>{
     function onKey(e){
-  const activeStudents=useMemo(()=>{
-    const statuses=isDraftView?["current","incoming"]:["current","leaving","incoming"];
-    const names=kanbanCards
-      .filter(c=>statuses.includes(c.status))
-      .flatMap(c=>c.members.map(m=>m.name).filter(Boolean));
-    return[...new Set(names)];
-  },[kanbanCards,isDraftView]);
-  /* Update global STUDENTS so helper functions (freeStudents, buildStudentSched) work */
-  STUDENTS=activeStudents.length?activeStudents:STUDENTS_INITIAL;
-  /* ── Teacher meta: specialties + extra teachers ── */
-  const[teacherMeta,setTeacherMeta]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem("hana_teacher_meta")||"{}");}catch{return{};}
-  });
+      if((e.ctrlKey||e.metaKey)&&e.key==="z"&&!e.shiftKey){e.preventDefault();undo();}
+      if((e.ctrlKey||e.metaKey)&&(e.key==="y"||(e.shiftKey&&e.key==="Z"))){e.preventDefault();redo();}
+    }
+    window.addEventListener("keydown",onKey);
+    return()=>window.removeEventListener("keydown",onKey);
+  },[undo,redo]);
+
+  /* ── Archive menu outside click ── */
   React.useEffect(()=>{
-    try{localStorage.setItem("hana_teacher_meta",JSON.stringify(teacherMeta));}catch(e){}
-    /* Rebuild global TEACHERS: base + any extras added via UI */
-    const extras=Object.keys(teacherMeta).filter(t=>teacherMeta[t]?.isExtra&&!TEACHERS_BASE.includes(t));
-    TEACHERS=[...TEACHERS_BASE,...extras];
-    /* Rebuild TEACHER_CODE for extras */
-    const maxCode=Math.max(...Object.values(TEACHER_CODE),...extras.map(t=>teacherMeta[t]?.code||0));
-    extras.forEach(t=>{if(!TEACHER_CODE[t])TEACHER_CODE[t]=teacherMeta[t]?.code||maxCode+1;});
-  },[teacherMeta]);
-  function pushSnap(changes){
-    setHist(({hist,hIdx})=>{
-  function setSched(newSched){
-    _setSched(newSched);
-    lsSaveSched(newSched);
-  }
-  function setWeekMeta(wm){
-    _setWeekMeta(wm);
-      return{hist:newHist,hIdx:newHist.length-1};
-    });
-  }
-  function setSched(fn){pushSnap({sched:typeof fn==='function'?fn(sched):fn});}
-  function setRooms1on1(fn){pushSnap({rooms1on1:typeof fn==='function'?fn(rooms1on1):fn});}
-  /* Setter that routes to draft or main snap depending on current view mode */
-  function setDisplayRooms1on1(fn){
-    if(isArchiveView)return; // archive is read-only
-    if(isDraftView){
-      setDraftWeek(prev=>{
-        if(!prev)return prev;
-        const cur=prev.rooms1on1||rooms1on1;
-        const next=typeof fn==='function'?fn(cur):fn;
-        return{...prev,rooms1on1:next};
-    lsSaveWeekMeta(wm);
-  }
+    if(!showArchiveMenu)return;
+    function onDoc(e){if(!e.target.closest('[data-archive-menu="1"]'))setShowArchiveMenu(false);}
+    document.addEventListener("mousedown",onDoc);
+    return()=>document.removeEventListener("mousedown",onDoc);
+  },[showArchiveMenu]);
 
-  const[absentSets,setAbsentSets_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_absentsets_v1")||"{}");}catch{return{};}});
-  function setAbsentSets(v){setAbsentSets_(v);localStorage.setItem("hana_absentsets_v1",JSON.stringify(v));}
-  const[subsByDay,setSubsByDay_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_subsbyday_v1")||"{}");}catch{return{};}});
-  function setSubsByDay(v){setSubsByDay_(v);localStorage.setItem("hana_subsbyday_v1",JSON.stringify(v));}
-  const[cellData,setCellData_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_celldata_v1")||"{}");}catch{return{};}});
-  function setCellData(v){setCellData_(v);localStorage.setItem("hana_celldata_v1",JSON.stringify(v));}
-  const[rooms1on1,setRooms1on1_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_rooms1on1_v1")||"{}");}catch{return{};}});
-  function setRooms1on1(v){setRooms1on1_(v);localStorage.setItem("hana_rooms1on1_v1",JSON.stringify(v));}
-  const[groupRosters,setGroupRosters_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_grouprosters_v1")||"{}");}catch{return{};}});
-  function setGroupRosters(v){setGroupRosters_(v);localStorage.setItem("hana_grouprosters_v1",JSON.stringify(v));}
-  function setArchives(fn){setArchivesRaw(prev=>{const next=typeof fn==='function'?fn(prev):fn;lsSaveArchives(next);return next;});}
-
-  const[viewMode,setViewMode]=useState("current"); // "current" | "draft" | number (archive idx)
-  const[showArchiveMenu,setShowArchiveMenu]=useState(false);
-
-  /* Derived: which sched + pushSnap to use based on viewMode */
-  const isArchiveView=typeof viewMode==="number";
-  const isDraftView=viewMode==="draft";
-  const displaySched=isArchiveView?(archives[viewMode]?.sched||{}):isDraftView?(draftWeek?.sched||{}):sched;
-  const displayCellData=isArchiveView?(archives[viewMode]?.cellData||{}):isDraftView?(draftWeek?.cellData||{}):cellData;
-  const displayRooms1on1=isArchiveView?(archives[viewMode]?.rooms1on1||rooms1on1):isDraftView?(draftWeek?.rooms1on1||rooms1on1):rooms1on1;
-  const displayGroupRosters=isArchiveView?(archives[viewMode]?.groupRosters||groupRosters):isDraftView?(draftWeek?.groupRosters||groupRosters):groupRosters;
-
-  function pushDraftSnap(changes){
-    /* Draft-related fields go into draftWeek; everything else (absent, subs, kanban) to main snap */
-    const draftFields={};
-    const mainFields={};
-    Object.entries(changes).forEach(([k,v])=>{
-      if(k==="sched"||k==="cellData"||k==="rooms1on1"||k==="groupRosters")draftFields[k]=v;
-      else mainFields[k]=v;
-    });
-    if(Object.keys(draftFields).length>0){
-      setDraftWeek(prev=>{if(!prev)return prev;return{...prev,...draftFields};});
-    }
-    if(Object.keys(mainFields).length>0)pushSnap(mainFields);
-  }
-  const activePushSnap=canSaveSched?(isDraftView?pushDraftSnap:pushSnap):noSave;
-  const activeSetSched=isDraftView
-    ?(fn=>setDraftWeek(prev=>{if(!prev)return prev;const s=typeof fn==='function'?fn(prev.sched):fn;return{...prev,sched:s};}))
-    :setSched;
-
-  /* ── Workflow actions ── */
-  function doConfirmWeek(){
-    setWeekStatus("confirmed");
-  }
-  function doCreateDraft(){
-    if(weekStatus!=="confirmed"){
-      alert("Please confirm this week's schedule first before creating a draft.");
-      return;
-    }
-    if(draftWeek&&!window.confirm("A draft already exists. Overwrite it?"))return;
-    const nextStart=addDaysISO(weekStart,7);
-    /* Remove leaving AND graduated students — use sorted-words key for fuzzy name match
-       (handles "JIWON BAIK" vs "BAIK JIWON" etc.) */
-    const _sortKey=s=>s.toLowerCase().split(/\s+/).sort().join(' ');
-    const removedNames=new Set(kanbanCards.filter(c=>c.status==="leaving"||c.status==="graduated").flatMap(c=>c.members.map(m=>m.name).filter(Boolean)));
-    const removedKeys=new Set([...removedNames].map(_sortKey));
-    const _isRemoved=name=>removedNames.has(name)||removedKeys.has(_sortKey(name));
-    const schedCopy=JSON.parse(JSON.stringify(sched));
-    Object.keys(schedCopy).forEach(t=>{Object.keys(schedCopy[t]).forEach(p=>{const v=schedCopy[t][p];if(v&&_isRemoved(v))delete schedCopy[t][p];});});
-    /* Remove leaving/graduated students from groupRosters copy */
-    const rosterCopy=JSON.parse(JSON.stringify(groupRosters));
-    Object.keys(rosterCopy).forEach(g=>{Object.keys(rosterCopy[g]).forEach(p=>{if(Array.isArray(rosterCopy[g][p]))rosterCopy[g][p]=rosterCopy[g][p].filter(s=>!_isRemoved(s));});});
-    const newDraft={
-      weekStart:nextStart,status:"draft",
-      sched:schedCopy,
-      cellData:JSON.parse(JSON.stringify(cellData)),
-      rooms1on1:JSON.parse(JSON.stringify(rooms1on1)),
-      groupRosters:rosterCopy,
-    };
-    setDraftWeek(newDraft);
-    /* Clear last week's absence/sub records — new draft starts fresh */
-    pushSnap({absentSets:{},subsByDay:{}});
-    setViewMode("draft");
-  }
-  function doConfirmDraft(){
-    if(!draftWeek)return;
-    setDraftWeek(prev=>({...prev,status:"confirmed"}));
-  }
-  function _doArchiveCore(silent){
-    if(!silent&&!window.confirm(`Archive ${weekRangeLabel(weekStart)}?\nThis will permanently save it and cannot be undone.`))return;
-    /* Convert absentSets (Map-based days) to plain objects for serialisation */
-    const absentSetsPlain={};
-    Object.entries(absentSets).forEach(([day,set])=>{absentSetsPlain[day]=[...set];});
-    const archived={
-      weekStart,weekEnd:addDaysISO(weekStart,4),label:weekRangeLabel(weekStart),
-      archivedAt:new Date().toISOString(),
-      sched:JSON.parse(JSON.stringify(sched)),
-      cellData:JSON.parse(JSON.stringify(cellData)),
-      rooms1on1:JSON.parse(JSON.stringify(rooms1on1)),
-      groupRosters:JSON.parse(JSON.stringify(groupRosters)),
-      absentSets:absentSetsPlain,
-      subsByDay:JSON.parse(JSON.stringify(subsByDay)),
-    };
-    setArchives(prev=>[...prev,archived]);
-    if(draftWeek){
-      pushSnap({sched:JSON.parse(JSON.stringify(draftWeek.sched||{})),cellData:JSON.parse(JSON.stringify(draftWeek.cellData||{})),rooms1on1:JSON.parse(JSON.stringify(draftWeek.rooms1on1||{})),groupRosters:JSON.parse(JSON.stringify(draftWeek.groupRosters||{}))});
-      setWeekStart(draftWeek.weekStart);
-      setDraftWeek(null);
-    }else{
-      pushSnap({sched:{}});
-      setWeekStart(addDaysISO(weekStart,7));
-    }
-    setWeekStatus("active");
-    setViewMode("current");
-  }
-  function doArchiveAndAdvance(){_doArchiveCore(false);}
-  /* Auto-archive on Saturday/Sunday if week is confirmed */
-  React.useEffect(()=>{
-    if(weekStatus!=="confirmed"||viewMode!=="current")return;
-    if(!window.confirm("Clear ALL assignments from this schedule?"))return;
-    if(isDraftView)setDraftWeek(prev=>({...prev,sched:{}}));
-    else pushSnap({sched:{}});
-  }
-
+  /* ── LOGIN GATE (all hooks must be above this) ── */
   if(!user)return<Login onLogin={setUser} kanbanCards={kanbanCards} teacherMeta={teacherMeta} passwords={passwords} agencies={agencies}/>;
+
+  /* ── Post-login derived ── */
   const{role,name}=user;
   const noSave=()=>{};
   const isViewerLike=role==="viewer"||role==="sched_editor";
   const canSaveSched=role==="admin"||role==="sched_editor";
   const safePush=role==="admin"?pushSnap:noSave;
-  const activePushSnap=canSaveSched?(isDraftView?pushDraftSnap:pushSnap):noSave;
-  const activeSetSched=isDraftView
-    ?(fn=>setDraftWeek(prev=>{if(!prev)return prev;const s=typeof fn==='function'?fn(prev.sched):fn;return{...prev,sched:s};}))
-    :setSched;
   const roleColor={admin:"#0f172a",teacher:"#0d9488",student:"#065f46",agency:"#1a1f3c",viewer:"#4b5563",sched_editor:"#1d4ed8"}[role]||"#0f172a";
 
-  /* ── Week label for header ── */
+  /* ── Display data (archive/draft/current) ── */
+  const displaySched=isArchiveView?(archives[viewMode]?.sched||{}):isDraftView?(draftWeek?.sched||{}):sched;
+  const displayCellData=isArchiveView?(archives[viewMode]?.cellData||{}):isDraftView?(draftWeek?.cellData||{}):cellData;
+  const displayRooms1on1=isArchiveView?(archives[viewMode]?.rooms1on1||rooms1on1):isDraftView?(draftWeek?.rooms1on1||rooms1on1):rooms1on1;
+  const displayGroupRosters=isArchiveView?(archives[viewMode]?.groupRosters||groupRosters):isDraftView?(draftWeek?.groupRosters||groupRosters):groupRosters;
+
+  /* ── Draft snap ── */
+  function pushDraftSnap(changes){
+    const draftFields={};const mainFields={};
+    Object.entries(changes).forEach(([k,v])=>{
+      if(k==="sched"||k==="cellData"||k==="rooms1on1"||k==="groupRosters")draftFields[k]=v;
+      else mainFields[k]=v;
+    });
+    if(Object.keys(draftFields).length>0)setDraftWeek(prev=>{if(!prev)return prev;return{...prev,...draftFields};});
+    if(Object.keys(mainFields).length>0)pushSnap(mainFields);
+  }
+
+  /* ── Active setters (draft-aware) ── */
+  const activePushSnap=canSaveSched?(isDraftView?pushDraftSnap:pushSnap):noSave;
+  const activeSetSched=isDraftView
+    ?(fn=>setDraftWeek(prev=>{if(!prev)return prev;const s=typeof fn==="function"?fn(prev.sched):fn;return{...prev,sched:s};}))
+    :setSched;
+  function setDisplayRooms1on1(fn){
+    if(isArchiveView)return;
+    if(isDraftView){
+      setDraftWeek(prev=>{if(!prev)return prev;const cur=prev.rooms1on1||rooms1on1;const next=typeof fn==="function"?fn(cur):fn;return{...prev,rooms1on1:next};});
+    }else{setRooms1on1(fn);}
+  }
+
+  /* ── Computed student/teacher data ── */
+  const activeStudents=React.useMemo(()=>{
+    const statuses=isDraftView?["current","incoming"]:["current","leaving","incoming"];
+    const names=(kanbanCards||[]).filter(c=>statuses.includes(c.status)).flatMap(c=>(c.members||[]).map(m=>m.name).filter(Boolean));
+    return[...new Set(names)];
+  },[kanbanCards,isDraftView]);
+  STUDENTS=activeStudents.length?activeStudents:STUDENTS_INITIAL;
+
+  const studentCourses=React.useMemo(()=>{
+    const map={};
+    (kanbanCards||[]).forEach(card=>{
+      (card.members||[]).forEach(m=>{if(m.name)map[m.name]={type:card.type||card.cardType||"Individual",groupName:card.name||""};});
+    });
+    return map;
+  },[kanbanCards]);
+
+  const mergedStudentData=React.useMemo(()=>{
+    const map={};
+    (kanbanCards||[]).forEach(card=>{
+      (card.members||[]).forEach(m=>{
+        if(m.name)map[m.name]={...m,cardId:card.id,cardType:card.type||card.cardType||"Individual",status:card.status,groupName:card.name||""};
+      });
+    });
+    return map;
+  },[kanbanCards]);
+
+  const allCardsForDorm=React.useMemo(()=>{
+    const ghosts=[];
+    (agencyPipeline||[]).forEach(entry=>{
+      if(!entry.kanbanCardId){
+        (entry.members||[]).filter(m=>(m.roomNumber||m.roomType?.startsWith("Hevea Hotel")||m.roomType?.startsWith("Clover Hotel"))&&(m.studyStart||entry.studyStart)&&(m.studyEnd||entry.studyEnd))
+          .forEach((m,mi)=>{ghosts.push({id:"ghost_"+entry.id+"_m"+mi,type:entry.cardType||"Individual",status:"current",
+            members:[{name:m.name||"(Pending)",nationality:m.nationality||"",studyStart:m.studyStart||entry.studyStart,studyEnd:m.studyEnd||entry.studyEnd,roomNumber:m.roomNumber,roomType:m.roomType||"",roomHistory:[]}],_isGhost:true});});
+      }
+    });
+    return[...(kanbanCards||[]),...ghosts];
+  },[kanbanCards,agencyPipeline]);
+
+  /* ── Workflow actions ── */
+  function doConfirmWeek(){pushSnap({weekStatus:"confirmed"});}
+  function doCreateDraft(){
+    if(weekStatus!=="confirmed"){alert("Please confirm this week's schedule first before creating a draft.");return;}
+    if(draftWeek&&!window.confirm("A draft already exists. Overwrite it?"))return;
+    const nextStart=addDaysISO(weekStart,7);
+    const _sortKey=s=>s.toLowerCase().split(/\s+/).sort().join(" ");
+    const removedNames=new Set((kanbanCards||[]).filter(c=>c.status==="leaving"||c.status==="graduated").flatMap(c=>(c.members||[]).map(m=>m.name).filter(Boolean)));
+    const removedKeys=new Set([...removedNames].map(_sortKey));
+    const _isRemoved=n=>removedNames.has(n)||removedKeys.has(_sortKey(n));
+    const schedCopy=JSON.parse(JSON.stringify(sched));
+    Object.keys(schedCopy).forEach(t=>{Object.keys(schedCopy[t]).forEach(p=>{const v=schedCopy[t][p];if(v&&_isRemoved(v))delete schedCopy[t][p];});});
+    const rosterCopy=JSON.parse(JSON.stringify(groupRosters));
+    Object.keys(rosterCopy).forEach(g=>{Object.keys(rosterCopy[g]).forEach(p=>{if(Array.isArray(rosterCopy[g][p]))rosterCopy[g][p]=rosterCopy[g][p].filter(s=>!_isRemoved(s));});});
+    setDraftWeek({weekStart:nextStart,status:"draft",sched:schedCopy,cellData:JSON.parse(JSON.stringify(cellData)),rooms1on1:JSON.parse(JSON.stringify(rooms1on1)),groupRosters:rosterCopy});
+    pushSnap({absentSets:{},subsByDay:{}});
+    setViewMode("draft");
+  }
+  function doConfirmDraft(){if(!draftWeek)return;setDraftWeek(prev=>({...prev,status:"confirmed"}));}
+  function _doArchiveCore(silent){
+    if(!silent&&!window.confirm("Archive "+weekRangeLabel(weekStart)+"?\nThis will permanently save it and cannot be undone."))return;
+    const absentSetsPlain={};
+    Object.entries(absentSets||{}).forEach(([day,s])=>{absentSetsPlain[day]=[...(s instanceof Set?s:[])];});
+    const archived={weekStart,weekEnd:addDaysISO(weekStart,4),label:weekRangeLabel(weekStart),archivedAt:new Date().toISOString(),sched:JSON.parse(JSON.stringify(sched)),cellData:JSON.parse(JSON.stringify(cellData)),rooms1on1:JSON.parse(JSON.stringify(rooms1on1)),groupRosters:JSON.parse(JSON.stringify(groupRosters)),absentSets:absentSetsPlain,subsByDay:JSON.parse(JSON.stringify(subsByDay))};
+    setArchives(prev=>[...prev,archived]);
+    if(draftWeek){
+      pushSnap({sched:JSON.parse(JSON.stringify(draftWeek.sched||{})),cellData:JSON.parse(JSON.stringify(draftWeek.cellData||{})),rooms1on1:JSON.parse(JSON.stringify(draftWeek.rooms1on1||{})),groupRosters:JSON.parse(JSON.stringify(draftWeek.groupRosters||{})),weekStart:draftWeek.weekStart,weekStatus:"active"});
+      setDraftWeek(null);
+    }else{
+      pushSnap({sched:{},weekStart:addDaysISO(weekStart,7),weekStatus:"active"});
+    }
+    setViewMode("current");
+  }
+  function doArchiveAndAdvance(){_doArchiveCore(false);}
+  function doClearSched(){
+    if(!window.confirm("Clear ALL assignments from this schedule?"))return;
+    if(isDraftView)setDraftWeek(prev=>({...prev,sched:{}}));
+    else pushSnap({sched:{}});
+  }
+
+  /* ── Auto-archive on weekend if confirmed ── */
+  React.useEffect(()=>{
+    const dow=new Date().getDay();
+    if((dow===6||dow===0)&&weekStatus==="confirmed"&&viewMode==="current")_doArchiveCore(true);
+  },[]);
+
+  /* ── Messaging ── */
+  function convKey(a,b){return[a,b].sort().join("||");}
+  function sendMessage(conv,text,file){
+    const key=typeof conv==="string"?conv:convKey(conv.a,conv.b);
+    const msg={id:Date.now(),sender:name,text,file:file||null,ts:new Date().toISOString(),readBy:[name]};
+    setMessages(prev=>{const n={...prev};n[key]=[...(n[key]||[]),msg];return n;});
+  }
+  function markRead(conv){
+    const key=typeof conv==="string"?conv:convKey(conv.a,conv.b);
+    setMessages(prev=>{const n={...prev};(n[key]||[]).forEach(m=>{if(!m.readBy?.includes(name))m.readBy=[...(m.readBy||[]),name];});return n;});
+  }
+  function changePassword(targetName,newPw){
+    setPasswords(prev=>{const n={...prev,[targetName]:newPw};lsSavePasswords(n);return n;});
+  }
+
+  /* ── Week header labels ── */
   const headerWeekLabel=isArchiveView
-    ?`📦 ${archives[viewMode]?.label||""}`
+    ?("📦 "+(archives[viewMode]?.label||""))
     :isDraftView
-      ?`📝 Draft: ${weekRangeLabel(draftWeek?.weekStart||addDaysISO(weekStart,7))}`
+      ?("📝 Draft: "+weekRangeLabel(draftWeek?.weekStart||addDaysISO(weekStart,7)))
       :weekRangeLabel(weekStart);
   const headerStatusBadge=isArchiveView
     ?{label:"ARCHIVED",bg:"#6b7280"}
@@ -8448,6 +8425,7 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
       ?{label:draftWeek?.status==="confirmed"?"CONFIRMED":"DRAFT",bg:draftWeek?.status==="confirmed"?"#0d9488":"#f59e0b"}
       :{label:weekStatus==="active"?"ACTIVE":"CONFIRMED",bg:weekStatus==="active"?"#16a34a":"#0d9488"};
 
+  /* ── Header component ── */
   const Header=()=>(
     <div data-header="1" style={{background:roleColor,color:"white",padding:"11px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 2px 10px rgba(0,0,0,.15)",position:"sticky",top:0,zIndex:50}}>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -8463,53 +8441,80 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         {(role==="admin"||isViewerLike)&&(
           <>
-            {/* ── Schedule View Dropdown ── */}
             <div style={{position:"relative"}} data-archive-menu="1">
               <button onClick={()=>setShowArchiveMenu(v=>!v)}
                 style={{padding:"5px 12px",background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.3)",borderRadius:6,color:"white",cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
                 {isArchiveView?"📦 Archive":isDraftView?"📝 Draft":"📋 This Week"} ▾
               </button>
-              </button>
               {showArchiveMenu&&(
                 <div style={{position:"absolute",right:0,top:"110%",background:"white",border:"1px solid #e2e8f0",borderRadius:10,boxShadow:"0 6px 24px rgba(0,0,0,.18)",minWidth:240,zIndex:200,overflow:"hidden"}}>
-                  {/* Current week */}
                   <div style={{padding:"5px 10px",fontSize:9,fontWeight:800,color:"#6b7280",background:"#f8fafc",textTransform:"uppercase",letterSpacing:1}}>Current Week</div>
-  const[dragSrc,setDragSrc]=React.useState(null);
-  const[dropTarget,setDropTarget]=React.useState(null);
-  const[lunchPeriod,setLunchPeriod_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_lunch_period")||"null");}catch{return null;}});
-  function setLunchPeriod(v){setLunchPeriod_(v);localStorage.setItem("hana_lunch_period",JSON.stringify(v));}
-  const[dormSheetRoom,setDormSheetRoom]=React.useState(null);
-  const[showDormSheet,setShowDormSheet]=React.useState(false);
-  const[page,setPage]=React.useState("schedule");
-  const[showAddCard,setShowAddCard]=React.useState(false);
-  const[editCard,setEditCard]=React.useState(null);
-  const[selectedCardId,setSelectedCardId]=React.useState(null);
-  const[activeTab,setActiveTab]=React.useState("board");
-  const[schedTab,setSchedTab]=React.useState("week");
-  const[messages,setMessages_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_messages_v1")||"{}");}catch{return{};}});
-  function setMessages(v){setMessages_(v);localStorage.setItem("hana_messages_v1",JSON.stringify(v));}
-  const[notifications,setNotifications]=React.useState([]);
-  function pushNotif(msg,type="info"){const id=Date.now();setNotifications(n=>[...n,{id,msg,type}]);setTimeout(()=>setNotifications(n=>n.filter(x=>x.id!==id)),4000);}
-  const[showPwMgr,setShowPwMgr]=React.useState(false);
-  const[syncStatus,setSyncStatus]=React.useState("idle");
-  const syncRef=React.useRef(null);
-  const allCardsForDorm=React.useMemo(()=>{
-    const ghosts=[];
-    (agencyPipeline||[]).forEach(entry=>{
-      if(!entry.kanbanCardId){
-        (entry.members||[]).filter(m=>(m.roomNumber||m.roomType?.startsWith("Hevea Hotel")||m.roomType?.startsWith("Clover Hotel"))&&(m.studyStart||entry.studyStart)&&(m.studyEnd||entry.studyEnd))
-          .forEach((m,mi)=>{ghosts.push({id:"ghost_"+entry.id+"_m"+mi,type:entry.cardType||"Individual",status:"current",
-            members:[{name:m.name||"(Pending)",nationality:m.nationality||"",studyStart:m.studyStart||entry.studyStart,studyEnd:m.studyEnd||entry.studyEnd,roomNumber:m.roomNumber,roomType:m.roomType||"",roomHistory:[]}],_isGhost:true});});
-      }
-    });
-    return [...(kanbanCards||[]),...ghosts];
-  },[kanbanCards,agencyPipeline]);
-                    :<div title={`Archive available from Friday (${friD.toLocaleDateString("en-US",{month:"short",day:"numeric"})})`}
-                        style={{padding:"5px 12px",background:"rgba(107,114,128,.3)",border:"1px solid rgba(255,255,255,.15)",borderRadius:6,color:"rgba(255,255,255,.45)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",cursor:"not-allowed",userSelect:"none"}}>
-                        📦 Archive Week
-                        <span style={{fontSize:9,marginLeft:5,opacity:.8}}>(Fri+)</span>
-                      </div>;
-                })()}
+                  <button onClick={()=>{setViewMode("current");setShowArchiveMenu(false);}}
+                    style={{width:"100%",textAlign:"left",padding:"8px 14px",border:"none",background:(!isArchiveView&&!isDraftView)?"#eff6ff":"white",fontSize:13,cursor:"pointer",fontWeight:(!isArchiveView&&!isDraftView)?700:400,color:(!isArchiveView&&!isDraftView)?"#1d4ed8":"#374151"}}>
+                    {"📋 "+weekRangeLabel(weekStart)+" "+(weekStatus==="confirmed"?"✓":"")}
+                  </button>
+                  {draftWeek&&(
+                    <>
+                      <div style={{padding:"5px 10px",fontSize:9,fontWeight:800,color:"#6b7280",background:"#f8fafc",textTransform:"uppercase",letterSpacing:1}}>Draft</div>
+                      <button onClick={()=>{setViewMode("draft");setShowArchiveMenu(false);}}
+                        style={{width:"100%",textAlign:"left",padding:"8px 14px",border:"none",background:isDraftView?"#fff7ed":"white",fontSize:13,cursor:"pointer",fontWeight:isDraftView?700:400,color:isDraftView?"#92400e":"#374151"}}>
+                        {"📝 "+weekRangeLabel(draftWeek.weekStart)+" "+(draftWeek.status==="confirmed"?"✓":"(draft)")}
+                      </button>
+                    </>
+                  )}
+                  {(archives||[]).length>0&&(
+                    <>
+                      <div style={{padding:"5px 10px",fontSize:9,fontWeight:800,color:"#6b7280",background:"#f8fafc",textTransform:"uppercase",letterSpacing:1}}>Archives</div>
+                      <div style={{maxHeight:180,overflowY:"auto"}}>
+                        {[...(archives||[])].reverse().map((a,i)=>{const realIdx=(archives||[]).length-1-i;return(
+                          <button key={realIdx} onClick={()=>{setViewMode(realIdx);setShowArchiveMenu(false);}}
+                            style={{width:"100%",textAlign:"left",padding:"8px 14px",border:"none",background:viewMode===realIdx?"#f0fdf4":"white",fontSize:12,cursor:"pointer",color:viewMode===realIdx?"#15803d":"#374151"}}>
+                            {"📦 "+a.label}
+                          </button>
+                        );})}
+                      </div>
+                    </>
+                  )}
+                  {role==="admin"&&(
+                    <div style={{borderTop:"1px solid #f1f5f9",padding:"8px 10px",display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {!isDraftView&&!draftWeek&&weekStatus==="confirmed"&&(()=>{
+                        const isWed=new Date().getDay()===3;
+                        return isWed
+                          ?<button onClick={()=>{doCreateDraft();setShowArchiveMenu(false);}} style={{padding:"4px 10px",background:"#7c3aed",color:"white",border:"none",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>📝 Create Draft</button>
+                          :<span style={{fontSize:10,color:"#9ca3af"}}>Draft available Wednesdays</span>;
+                      })()}
+                      {(()=>{
+                        const dow=new Date().getDay();
+                        const isFriPlus=dow>=5||dow===0;
+                        return isFriPlus
+                          ?<button onClick={()=>{doArchiveAndAdvance();setShowArchiveMenu(false);}} style={{padding:"4px 10px",background:"#0d9488",color:"white",border:"none",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>📦 Archive Week</button>
+                          :<div title="Archive available from Friday" style={{padding:"4px 10px",background:"rgba(107,114,128,.3)",border:"1px solid rgba(255,255,255,.15)",borderRadius:5,color:"rgba(255,255,255,.45)",fontSize:11,fontWeight:700,cursor:"not-allowed",userSelect:"none"}}>{"📦 Archive Week"}<span style={{fontSize:9,marginLeft:4,opacity:.8}}>(Fri+)</span></div>;
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {role==="admin"&&!isArchiveView&&(
+              <>
+                {!isDraftView&&weekStatus==="active"&&(
+                  <button onClick={doConfirmWeek}
+                    style={{padding:"5px 12px",background:"rgba(124,58,237,.85)",border:"1px solid rgba(255,255,255,.3)",borderRadius:6,color:"white",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                    🔒 Confirm Week
+                  </button>
+                )}
+                {isDraftView&&draftWeek?.status!=="confirmed"&&(
+                  <button onClick={doConfirmDraft}
+                    style={{padding:"5px 12px",background:"rgba(13,148,136,.85)",border:"1px solid rgba(255,255,255,.3)",borderRadius:6,color:"white",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                    ✓ Confirm Draft
+                  </button>
+                )}
+                {isDraftView&&draftWeek?.status==="confirmed"&&(
+                  <button onClick={doArchiveAndAdvance}
+                    style={{padding:"5px 12px",background:"rgba(16,185,129,.85)",border:"1px solid rgba(255,255,255,.3)",borderRadius:6,color:"white",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                    📦 Go Live
+                  </button>
+                )}
               </>
             )}
           </>
@@ -8529,7 +8534,6 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
     </div>
   );
 
-
   if(role==="agency")return(
     <div style={{minHeight:"100vh"}}><Header/>
       <div style={{maxWidth:1200,margin:"0 auto",padding:24}}>
@@ -8543,40 +8547,14 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
       <div style={{maxWidth:920,margin:"0 auto",padding:24}}>
         <PersonalStudentView name={name} sched={sched} absentSets={absentSets} subsByDay={subsByDay} rooms1on1={rooms1on1} groupRosters={groupRosters} selDay={selDay} setSelDay={setSelDay} messages={messages} onOpenMessenger={info=>setMessengerOpen(info)} kanbanCards={kanbanCards} onChangePassword={changePassword} mealPlan={mealPlan} mealSkips={mealSkips} setMealSkips={setMealSkips}/>
         {messengerOpen&&(()=>{
-          /* Group chat room (Group / Activity / Kindergarten) */
-          if(messengerOpen.isGroup){
-            return<MessengerModal
-              currentUser={name}
-              isGroup={true}
-              groupKey={messengerOpen.groupKey}
-              groupLabel={messengerOpen.groupLabel}
-              groupMembers={messengerOpen.groupMembers}
-              isAdmin={false}
-              messages={messages}
-              onSend={sendMessage}
-              onMarkRead={markRead}
-              onClose={()=>setMessengerOpen(null)}
-            />;
-          }
-          if(messengerOpen.isGuardian){
-            /* Guardian viewing child's conversation — read-only */
-            return<MessengerModal
-              currentUser={messengerOpen.teacher}
-              otherUser={messengerOpen.student}
-              isAdmin={true}
-  React.useEffect(()=>{
-    function onKey(e){
-      if((e.ctrlKey||e.metaKey)&&e.key==="z"&&!e.shiftKey){e.preventDefault();undo();}
-      if((e.ctrlKey||e.metaKey)&&(e.key==="y"||(e.shiftKey&&e.key==="Z"))){e.preventDefault();redo();}
-    }
-    window.addEventListener("keydown",onKey);
-    return()=>window.removeEventListener("keydown",onKey);
-  },[undo,redo]);
-          return<MessengerModal currentUser={schedStudentName} otherUser={messengerOpen.teacher} isAdmin={false} messages={messages} onSend={sendMessage} onMarkRead={markRead} onClose={()=>setMessengerOpen(null)}/>;
+          if(messengerOpen.isGroup)return<MessengerModal currentUser={name} isGroup={true} groupKey={messengerOpen.groupKey} groupLabel={messengerOpen.groupLabel} groupMembers={messengerOpen.groupMembers} isAdmin={false} messages={messages} onSend={sendMessage} onMarkRead={markRead} onClose={()=>setMessengerOpen(null)}/>;
+          if(messengerOpen.isGuardian)return<MessengerModal currentUser={messengerOpen.teacher} otherUser={messengerOpen.student} isAdmin={true} messages={messages} onSend={sendMessage} onMarkRead={markRead} onClose={()=>setMessengerOpen(null)}/>;
+          return<MessengerModal currentUser={name} otherUser={messengerOpen.teacher} isAdmin={false} messages={messages} onSend={sendMessage} onMarkRead={markRead} onClose={()=>setMessengerOpen(null)}/>;
         })()}
       </div>
     </div>
   );
+
 
   // ── ADMIN
   /* For archive view: absent/sub come from the archived snapshot (converted back from array to Set) */
@@ -8629,7 +8607,6 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
               <div style={{background:isArchiveView?"#f3f4f6":"#fffbeb",border:`1.5px solid ${isArchiveView?"#9ca3af":"#fbbf24"}`,borderRadius:8,padding:"8px 14px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <span style={{fontSize:12,fontWeight:700,color:isArchiveView?"#6b7280":"#92400e"}}>
                   {isArchiveView?`📦 Viewing archived schedule: ${archives[viewMode]?.label}`:`📝 Editing draft: ${weekRangeLabel(draftWeek?.weekStart||"")} — ${draftWeek?.status==="confirmed"?"Confirmed, ready to go live":"Draft mode"}`}
-                </span>
                 </span>
                 <div style={{display:"flex",gap:6}}>
                   {isDraftView&&draftWeek?.status!=="confirmed"&&<button onClick={doConfirmDraft} style={{padding:"4px 10px",background:"#0d9488",color:"white",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Confirm Draft</button>}
@@ -8686,7 +8663,7 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
                       color:canRedo?"#374151":"#d1d5db",cursor:canRedo?"pointer":"not-allowed",fontSize:15,fontWeight:700,lineHeight:1}}>
                     ↪
                   </button>
-                  <span style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap"}}>{hIdx}/{hist.length-1}</span>
+                  <span style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap"}}>{hIdx}/{hist.hist.length-1}</span>
                 </div>
               )}
               {/* Clear schedule button for current week */}
