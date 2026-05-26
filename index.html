@@ -8071,6 +8071,388 @@ function DataToolsPage(){
   );
 }
 
+/* ═════════════════════════════════════════════════════
+   AgencyPage — wrapper around AgencyPipeline with onCreateCard + refresh polling
+═════════════════════════════════════════════════════ */
+function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCards,pushSnap,agencies,setAgencies}){
+  /* Wire up the REFRESH button defined inside AgencyPipeline */
+  React.useEffect(()=>{
+    window._agencyRefresh=async function(){
+      try{
+        const{data,error}=await _sb.from('app_data').select('data').eq('id','hana_main').single();
+        if(!error&&data&&data.data){
+          HANA_SYNC_KEYS.forEach(k=>{if(data.data[k]!=null)localStorage.setItem(k,data.data[k]);});
+        }
+      }catch(e){console.error("Agency refresh failed:",e);}
+      window.location.reload();
+    };
+    return()=>{window._agencyRefresh=null;};
+  },[]);
+
+  /* onCreateCard: push the new card into the hist-based kanbanCards */
+  function onCreateCard(newCard){
+    pushSnap({kanbanCards:[...(kanbanCards||[]),newCard]});
+  }
+
+  return(
+    <AgencyPipeline
+      isAdmin={isAdmin}
+      agencies={agencies}
+      kanbanCards={kanbanCards}
+      onCreateCard={onCreateCard}
+      agencyPipeline={agencyPipeline}
+      setAgencyPipeline={setAgencyPipeline}
+    />
+  );
+}
+
+/* ═════════════════════════════════════════════════════
+   DormitoryPage — room grid overview + timeline modal
+═════════════════════════════════════════════════════ */
+function DormitoryPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
+  const[targetRoom,setTargetRoom]=React.useState(null);
+  const[showSheet,setShowSheet]=React.useState(false);
+
+  /* Build ghost (pending pipeline) cards */
+  const ghostCards=React.useMemo(()=>{
+    const ghosts=[];
+    (agencyPipeline||[]).forEach(entry=>{
+      if(!entry.kanbanCardId){
+        (entry.members||[])
+          .filter(m=>(m.roomNumber||(m.roomType||"").startsWith("Hevea Hotel")||(m.roomType||"").startsWith("Clover Hotel"))
+            &&(m.studyStart||entry.studyStart)&&(m.studyEnd||entry.studyEnd))
+          .forEach((m,mi)=>{
+            ghosts.push({id:"ghost_"+entry.id+"_m"+mi,type:entry.cardType||"Individual",status:"current",
+              members:[{name:m.name||"(Pending)",nationality:m.nationality||"",
+                studyStart:m.studyStart||entry.studyStart,studyEnd:m.studyEnd||entry.studyEnd,
+                roomNumber:m.roomNumber,roomType:m.roomType||"",roomHistory:[]}],
+              _isGhost:true});
+          });
+      }
+    });
+    return ghosts;
+  },[agencyPipeline]);
+
+  const allCards=React.useMemo(()=>[...(kanbanCards||[]),...ghostCards],[kanbanCards,ghostCards]);
+  const ghostCardIds=React.useMemo(()=>new Set(ghostCards.map(g=>g.id)),[ghostCards]);
+
+  /* Current occupancy: roomNumber (string) → [{name, nationality, studyEnd, isGhost}] */
+  const occupancyMap=React.useMemo(()=>{
+    const map={};
+    const today=new Date();today.setHours(0,0,0,0);
+    const toDate=s=>s?new Date(s+"T00:00:00"):null;
+    const ACTIVE=["registered","current","incoming","leaving"];
+    allCards.filter(c=>ACTIVE.includes(c.status)).forEach(card=>{
+      (card.members||[]).forEach(m=>{
+        const segs=getEffectiveRoomSegments(m);
+        segs.forEach(seg=>{
+          if(!seg.roomNumber)return;
+          const from=toDate(seg.from),to=toDate(seg.to);
+          if(!from||!to||from>today||today>to)return;
+          const rn=String(seg.roomNumber);
+          if(!map[rn])map[rn]=[];
+          map[rn].push({name:m.name||"?",nationality:m.nationality||"",studyEnd:seg.to,cardId:card.id,isGhost:!!card._isGhost});
+        });
+      });
+    });
+    return map;
+  },[allCards]);
+
+  /* Summary stats */
+  const totalRooms=DORM_SECTIONS.reduce((s,{rooms})=>s+rooms.length,0);
+  const occupiedRooms=Object.keys(occupancyMap).length;
+  const totalOccupants=Object.values(occupancyMap).reduce((s,arr)=>s+arr.length,0);
+
+  return(
+    <div>
+      <div className="pg-wrap">
+        <span className="pg-badge" style={{background:"#e0e7ff",color:"#4338ca"}}>DORMITORY</span>
+        <h2 className="pg-title">🏨 Dormitory Overview</h2>
+        <p className="pg-sub">Click any room to view the full occupancy timeline.</p>
+        <div style={{display:"flex",gap:16,marginTop:10,flexWrap:"wrap"}}>
+          {[["Total Rooms",totalRooms,"#eff6ff","#1d4ed8"],["Occupied",occupiedRooms,"#f0fdf4","#15803d"],["Vacant",totalRooms-occupiedRooms,"#faf5ff","#7c3aed"],["Current Students",totalOccupants,"#fff7ed","#c2410c"]].map(([label,val,bg,color])=>(
+            <div key={label} style={{background:bg,border:`1.5px solid ${color}22`,borderRadius:10,padding:"10px 18px",minWidth:100}}>
+              <div style={{fontSize:22,fontWeight:800,color}}>{val}</div>
+              <div style={{fontSize:11,color:"#64748b",fontWeight:600}}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {DORM_SECTIONS.map(({section,rooms})=>(
+        <div key={section} style={{marginBottom:24}}>
+          <div style={{fontSize:11,fontWeight:800,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10,paddingBottom:5,borderBottom:"2px solid #e2e8f0"}}>
+            {section}
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+            {rooms.map(roomNum=>{
+              const isVirtual=!!HOTEL_VIRTUAL_ROOMS[roomNum];
+              const label=HOTEL_VIRTUAL_ROOMS[roomNum]||"Room "+roomNum;
+              const isFam=FAMILY_ROOM_SET.has(roomNum);
+              const occupants=occupancyMap[String(roomNum)]||[];
+              const isEmpty=occupants.length===0;
+              return(
+                <div key={roomNum}
+                  onClick={()=>{setTargetRoom(String(roomNum));setShowSheet(true);}}
+                  style={{
+                    width:isVirtual?210:148,minWidth:isVirtual?210:148,
+                    border:`2px solid ${isEmpty?"#e2e8f0":isFam?"#6ee7b7":isVirtual?"#86efac":"#93c5fd"}`,
+                    borderRadius:10,padding:"10px 12px",cursor:"pointer",
+                    background:isEmpty?"#f8fafc":isFam?"#f0fdf4":isVirtual?"#f0fdf4":"#eff6ff",
+                  }}
+                  onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,.14)"}
+                  onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}
+                >
+                  <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:5}}>
+                    <span style={{fontSize:11,fontWeight:800,color:"#1e3a8a"}}>{label}</span>
+                    {isFam&&<span style={{fontSize:9,background:"#d1fae5",color:"#065f46",padding:"1px 5px",borderRadius:8,fontWeight:700}}>FAM</span>}
+                    {isVirtual&&<span style={{fontSize:9,background:"#dcfce7",color:"#15803d",padding:"1px 5px",borderRadius:8,fontWeight:700}}>HOTEL</span>}
+                  </div>
+                  {isEmpty?(
+                    <div style={{fontSize:10,color:"#9ca3af",fontStyle:"italic"}}>Vacant</div>
+                  ):(
+                    occupants.map((o,i)=>(
+                      <div key={i} style={{fontSize:10,color:o.isGhost?"#9ca3af":"#0f172a",fontWeight:o.isGhost?400:600,display:"flex",alignItems:"center",gap:3,marginBottom:1}}>
+                        {o.isGhost&&<span title="Pending pipeline">⏳</span>}
+                        <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.name}</span>
+                        {o.nationality&&<span style={{fontSize:9,color:"#94a3b8",flexShrink:0}}>({NAT_CODE[o.nationality]||o.nationality.slice(0,2).toUpperCase()})</span>}
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {showSheet&&targetRoom&&(
+        <DormitorySheetModal
+          kanbanCards={allCards}
+          targetRoom={targetRoom}
+          onClose={()=>setShowSheet(false)}
+          ghostCardIds={ghostCardIds}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ═════════════════════════════════════════════════════
+   MealPage — weekly meal plan editor (v2 system)
+═════════════════════════════════════════════════════ */
+function MealPage({mealPlan,setMealPlan,mealDraft,setMealDraft,mealArchives,setMealArchives,kanbanCards,teacherMeta,mealSkips}){
+  const[current,setCurrent_]=React.useState(lsGetMeal2Current);
+  const[draft,setDraft_]=React.useState(lsGetMeal2Draft);
+  const[archives,setArchives_]=React.useState(lsGetMeal2Archives);
+  const[customDb,setCustomDb]=React.useState(lsGetFoodDbCustom);
+  const[viewMode,setViewMode]=React.useState("current");
+  const[editCell,setEditCell]=React.useState(null);
+  const[inputVal,setInputVal]=React.useState("");
+  const[suggestions,setSuggestions]=React.useState([]);
+  const inputRef=React.useRef(null);
+
+  const isArchive=typeof viewMode==="number";
+  const isDraft=viewMode==="draft";
+  const displayData=isArchive?archives[viewMode]:isDraft?draft:current;
+  const weekPlan=displayData?.plan||{};
+
+  function saveCurrent(v){setCurrent_(v);lsSaveMeal2Current(v);}
+  function saveDraft(v){setDraft_(v);lsSaveMeal2Draft(v);}
+  function saveArchives(v){setArchives_(v);lsSaveMeal2Archives(v);}
+
+  function getVal(day,path){
+    const parts=path.split(".");
+    let v=weekPlan[day]||emptyMealDay();
+    for(const p of parts)v=v?.[p];
+    return v||"";
+  }
+  function setVal(day,path,val){
+    if(isArchive)return;
+    function setDeep(obj,keys,v){
+      if(!keys.length)return v;
+      const[k,...rest]=keys;
+      return{...(obj||{}),[k]:setDeep(obj?.[k],rest,v)};
+    }
+    const newPlan={...weekPlan,[day]:{...emptyMealDay(),...(weekPlan[day]||{})}};
+    newPlan[day]=setDeep(newPlan[day],path.split("."),val);
+    const newData={...(displayData||emptyWeekMeal("2026-05-25")),plan:newPlan};
+    if(isDraft)saveDraft(newData);
+    else saveCurrent(newData);
+  }
+
+  function startEdit(rowId,day){
+    const row=MEAL_ROWS.find(r=>r.id===rowId);
+    if(!row)return;
+    const cur=getVal(day,row.path);
+    setEditCell({rowId,day,path:row.path});
+    setInputVal(cur);
+    setSuggestions(getMealRowOptions(row,customDb));
+    setTimeout(()=>inputRef.current?.focus(),30);
+  }
+  function commitEdit(val){
+    if(!editCell)return;
+    setVal(editCell.day,editCell.path,val!==undefined?val:inputVal.trim());
+    setEditCell(null);setSuggestions([]);
+  }
+
+  function doCreateDraft(){
+    if(draft&&!window.confirm("Overwrite existing draft?"))return;
+    const nextStart=addDaysISO(current?.weekStart||"2026-05-25",7);
+    saveDraft({...emptyWeekMeal(nextStart),status:"draft"});
+    setViewMode("draft");
+  }
+  function doArchive(){
+    if(!window.confirm("Archive this week's meal plan?"))return;
+    const toArc={...current,archivedAt:new Date().toISOString(),label:weekRangeLabel(current?.weekStart||"")};
+    const newArcs=[...archives,toArc];
+    saveArchives(newArcs);
+    if(draft){saveCurrent({...draft,status:"active"});saveDraft(null);}
+    else saveCurrent(emptyWeekMeal(addDaysISO(current?.weekStart||"2026-05-25",7)));
+    setViewMode("current");
+  }
+
+  /* Group MEAL_ROWS by group label */
+  const rowGroups=React.useMemo(()=>{
+    const groups=[];
+    const seen=new Set();
+    MEAL_ROWS.forEach(row=>{
+      if(!seen.has(row.group)){seen.add(row.group);groups.push({group:row.group,gLabel:row.gLabel,rows:[]});}
+      groups.find(g=>g.group===row.group).rows.push(row);
+    });
+    return groups;
+  },[]);
+
+  const WKND=new Set(["Sat","Sun"]);
+  const filteredSug=React.useMemo(()=>
+    editCell?suggestions.filter(s=>s.toLowerCase().includes(inputVal.toLowerCase())&&s!==inputVal).slice(0,8):[]
+  ,[suggestions,inputVal,editCell]);
+
+  const thStyle={padding:"8px 6px",fontWeight:700,fontSize:11,textAlign:"center",whiteSpace:"nowrap"};
+  const dayBg=d=>WKND.has(d)?"#0f172a":"#1e3a8a";
+
+  return(
+    <div>
+      {/* Header */}
+      <div className="pg-wrap" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
+        <div>
+          <span className="pg-badge" style={{background:"#fef9c3",color:"#713f12"}}>MEAL PLAN</span>
+          <h2 className="pg-title">🍽️ Weekly Meal Plan</h2>
+          <p className="pg-sub">
+            {current?.weekStart?weekRangeLabel(current.weekStart):""}
+            {isDraft&&draft?.weekStart?" · Draft: "+weekRangeLabel(draft.weekStart):""}
+            {isArchive&&archives[viewMode]?.label?" · "+archives[viewMode].label:""}
+          </p>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          {!isDraft&&!isArchive&&(
+            <button onClick={doCreateDraft} style={{padding:"7px 14px",background:"#7c3aed",color:"white",border:"none",borderRadius:7,fontWeight:700,fontSize:12,cursor:"pointer"}}>📝 Create Draft</button>
+          )}
+          {!isArchive&&(
+            <button onClick={doArchive} style={{padding:"7px 14px",background:"#0d9488",color:"white",border:"none",borderRadius:7,fontWeight:700,fontSize:12,cursor:"pointer"}}>📦 Archive Week</button>
+          )}
+          <select value={viewMode} onChange={e=>{const v=e.target.value;setViewMode(v==="current"||v==="draft"?v:Number(v));}}
+            style={{padding:"6px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+            <option value="current">📋 Current</option>
+            {draft&&<option value="draft">📝 Draft</option>}
+            {[...archives].reverse().map((a,i)=>(
+              <option key={i} value={archives.length-1-i}>📦 {a.label||weekRangeLabel(a.weekStart||"")}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {isArchive&&(
+        <div style={{marginBottom:10,padding:"8px 14px",background:"#f3f4f6",borderRadius:8,fontSize:12,color:"#6b7280",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <span>📦 Viewing archived: {archives[viewMode]?.label||""}</span>
+          <button onClick={()=>setViewMode("current")} style={{background:"none",border:"none",color:"#2563eb",cursor:"pointer",fontWeight:700,fontSize:12}}>← Current</button>
+        </div>
+      )}
+
+      {/* Grid */}
+      <div style={{overflowX:"auto",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+        <table style={{borderCollapse:"collapse",minWidth:"100%",fontSize:11}}>
+          <thead>
+            <tr>
+              <th style={{...thStyle,width:110,minWidth:110,textAlign:"left",padding:"8px 10px",background:"#1e3a8a",color:"white",position:"sticky",left:0,zIndex:5}}>Row</th>
+              {MEAL_DAYS.map(d=>(
+                <th key={d} style={{...thStyle,minWidth:120,background:dayBg(d),color:"white"}}>
+                  {d}
+                  {WKND.has(d)&&<div style={{fontSize:9,opacity:.7,fontWeight:400}}>JC Style</div>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rowGroups.map((grp,gi)=>(
+              <React.Fragment key={grp.group}>
+                {grp.gLabel&&(
+                  <tr>
+                    <td colSpan={8} style={{padding:"6px 10px",fontWeight:800,fontSize:11,color:"#1e3a8a",background:"#eff6ff",borderTop:"2px solid #bfdbfe",letterSpacing:.5}}>
+                      {grp.gLabel}
+                    </td>
+                  </tr>
+                )}
+                {grp.rows.map((row,ri)=>(
+                  <tr key={row.id} style={{background:ri%2===0?"#fff":"#f8fafc"}}>
+                    <td style={{padding:"6px 10px",fontWeight:600,color:"#374151",fontSize:11,position:"sticky",left:0,background:ri%2===0?"#fff":"#f8fafc",borderRight:"2px solid #e2e8f0",zIndex:2,whiteSpace:"nowrap"}}>
+                      {row.label}
+                    </td>
+                    {MEAL_DAYS.map(d=>{
+                      const isWknd=WKND.has(d);
+                      const isDisabled=(isWknd&&row.disabledOnWknd)||(!isWknd&&row.wdDisabled);
+                      const bg=isWknd?(row.wkndBg||"#fef9c3"):(row.wdBg||"white");
+                      const color=isWknd?(row.wkndColor||"#92400e"):(row.wdColor||"#1e293b");
+                      const val=getVal(d,row.path);
+                      const isEditing=editCell?.rowId===row.id&&editCell?.day===d;
+                      return(
+                        <td key={d} style={{background:bg,padding:0,position:"relative",verticalAlign:"top"}}>
+                          {isDisabled?(
+                            <div style={{padding:"6px 8px",color:"#9ca3af",fontSize:10}}>—</div>
+                          ):isEditing?(
+                            <div style={{position:"relative"}}>
+                              <input ref={inputRef} value={inputVal}
+                                onChange={e=>setInputVal(e.target.value)}
+                                onBlur={()=>setTimeout(commitEdit,160)}
+                                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();commitEdit();}if(e.key==="Escape"){setEditCell(null);setSuggestions([]);}}}
+                                style={{width:"100%",padding:"5px 8px",border:"2px solid #3b82f6",borderRadius:0,fontSize:11,outline:"none",background:"white",color:"#0f172a"}}/>
+                              {filteredSug.length>0&&(
+                                <div style={{position:"absolute",top:"100%",left:0,right:0,background:"white",border:"1px solid #bfdbfe",borderRadius:"0 0 8px 8px",boxShadow:"0 6px 16px rgba(0,0,0,.12)",zIndex:100,maxHeight:160,overflowY:"auto"}}>
+                                  {filteredSug.map((s,i)=>(
+                                    <div key={i}
+                                      onMouseDown={()=>commitEdit(s)}
+                                      style={{padding:"5px 10px",cursor:"pointer",fontSize:11,color:"#1e293b",borderBottom:"1px solid #f1f5f9"}}
+                                      onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
+                                      onMouseLeave={e=>e.currentTarget.style.background="white"}>
+                                      {s}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ):(
+                            <div
+                              onClick={()=>!isArchive&&startEdit(row.id,d)}
+                              style={{padding:"6px 8px",color:val?color:"#94a3b8",cursor:isArchive?"default":"text",minHeight:28,fontSize:11,fontWeight:val?500:400,lineHeight:1.4}}>
+                              {val||(!isArchive&&<span style={{fontSize:9,opacity:.45}}>+</span>)}
+                              {isWknd&&row.wkndNote&&<span style={{fontSize:8,color,opacity:.7,marginLeft:3}}>[{row.wkndNote}]</span>}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
 /* ════════════════════════════════════════════════════════════════════
    LocalStorage persistence
    ════════════════════════════════════════════════════════════════════ */
