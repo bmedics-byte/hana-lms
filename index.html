@@ -8653,8 +8653,8 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
           <p style={{color:"#6b7280",fontSize:13,marginTop:4}}>Learning Management System</p>
         </div>
         <form onSubmit={submit}>
-          <div style={{marginBottom:14}}><label style={{display:"block",fontSize:13,fontWeight:600,color:"#374151",marginBottom:5}}>Username</label><input className="li" value={u} onChange={e=>setU(e.target.value)} placeholder="" placeholder="admin / garyn / annhuang …"/></div>
-          <div style={{marginBottom:14}}><label style={{display:"block",fontSize:13,fontWeight:600,color:"#374151",marginBottom:5}}>Password</label><input className="li" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="" placeholder="admin123 / teacher123 / student123"/></div>
+          <div style={{marginBottom:14}}><label style={{display:"block",fontSize:13,fontWeight:600,color:"#374151",marginBottom:5}}>Username</label><input className="li" value={u} onChange={e=>setU(e.target.value)} placeholder=""/></div>
+          <div style={{marginBottom:14}}><label style={{display:"block",fontSize:13,fontWeight:600,color:"#374151",marginBottom:5}}>Password</label><input className="li" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder=""/></div>
           {err&&<div style={{color:"#dc2626",fontSize:13,marginBottom:10}}>{err}</div>}
           <button type="submit" className="lb">Login</button>
         </form>
