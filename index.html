@@ -9270,28 +9270,19 @@ class ErrorBoundary extends React.Component {
             </div>
             {/* JS Stack — first 8 lines always open for easy copy */}
             {stack&&(
-              <div style={{marginBottom:10}}>
-                <div style={{color:"#374151",fontSize:12,fontWeight:700,marginBottom:4}}>📍 JS Stack Trace (first 8 lines)</div>
-                <pre style={{background:"#0f172a",color:"#f8fafc",padding:12,borderRadius:6,fontSize:11,overflow:"auto",maxHeight:180,whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0,lineHeight:1.6}}>{stackLines}</pre>
-              </div>
+              <details open style={{marginBottom:10}}>
+                <summary style={{cursor:"pointer",fontWeight:700,fontSize:11,color:"#6b7280",marginBottom:4}}>JS Stack (first 8 lines)</summary>
+                <pre style={{margin:0,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:4,padding:"8px 10px",fontSize:10,overflowX:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all",color:"#374151"}}>{stackLines}</pre>
+              </details>
             )}
-            {/* Component Stack — always open */}
+            {/* Full Component Stack */}
             {cstack&&(
-              <div style={{marginBottom:10}}>
-                <div style={{color:"#374151",fontSize:12,fontWeight:700,marginBottom:4}}>🧩 Component Stack</div>
-                <pre style={{background:"#f8fafc",padding:10,borderRadius:5,fontSize:11,overflow:"auto",maxHeight:160,color:"#64748b",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0,lineHeight:1.5}}>{cstack}</pre>
-              </div>
+              <details style={{marginBottom:10}}>
+                <summary style={{cursor:"pointer",fontWeight:700,fontSize:11,color:"#6b7280",marginBottom:4}}>Component Stack</summary>
+                <pre style={{margin:0,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:4,padding:"8px 10px",fontSize:10,overflowX:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all",color:"#374151"}}>{cstack}</pre>
+              </details>
             )}
-            {/* Full stack collapsed */}
-            {stack&&<details style={{marginBottom:14}}>
-              <summary style={{cursor:"pointer",color:"#6b7280",fontSize:11,fontWeight:600}}>▸ Full JS Stack</summary>
-              <pre style={{background:"#f8fafc",padding:10,borderRadius:5,fontSize:10,overflow:"auto",maxHeight:200,color:"#475569",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:"4px 0 0"}}>{stack}</pre>
-            </details>}
-            <div style={{display:"flex",gap:10,marginTop:4}}>
-              <button onClick={copyAll} style={{padding:"8px 18px",background:"#1e40af",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>📋 Copy Error Report</button>
-              <button onClick={()=>this.setState({err:null,info:null,stack:null})} style={{padding:"8px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>🔄 Retry</button>
-              <button onClick={()=>window.location.reload()} style={{padding:"8px 18px",background:"#f1f5f9",color:"#374151",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>↺ Reload</button>
-            </div>
+            <button onClick={copyAll} style={{marginTop:8,padding:"7px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:12}}>📋 Copy All to Clipboard</button>
           </div>
         </div>
       );
@@ -9299,30 +9290,30 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
-
-/* ── Global error logger (catches non-React errors) ── */
-window.addEventListener("error",function(e){
-  const div=document.getElementById("global-err");
-  if(div){div.style.display="block";div.querySelector("pre").textContent="Uncaught Error: "+(e.message||e)+" @ "+(e.filename||"?")+"#"+(e.lineno||"?");}
-});
-window.addEventListener("unhandledrejection",function(e){
-  const div=document.getElementById("global-err");
-  if(div){div.style.display="block";div.querySelector("pre").textContent="Unhandled Promise: "+(e.reason?.message||e.reason)+"\n"+(e.reason?.stack||"");}
-});
-/* ── Mount ── */
+window.addEventListener("error",function(e){console.error("Global error:",e.error||e.message);});
+window.addEventListener("unhandledrejection",function(e){console.error("Unhandled rejection:",e.reason);});
 (async function(){
-  try {
+  try{
     await Promise.race([
       loadFromSupabase(),
-      new Promise((_,reject)=>setTimeout(()=>reject(new Error('Supabase load timeout (5s)')),5000))
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error("Supabase timeout")),8000))
     ]);
-  } catch(err) {
-    console.error("Supabase 초기 데이터 로드 실패, 로컬 모드로 진입합니다:", err);
+  }catch(err){
+    console.warn("Supabase load warning:",err.message);
   }
-  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
+  ReactDOM.createRoot(document.getElementById("root")).render(
+    <ErrorBoundary><App/></ErrorBoundary>
+  );
 })();
 </script>
-<script>
-(function(){function setHeaderVar(){var h=document.querySelector('[data-header="1"]');if(h)document.documentElement.style.setProperty('--header-h',h.getBoundingClientRect().height+'px');}setTimeout(setHeaderVar,200);window.addEventListener('resize',setHeaderVar);})();
+<script>(function(){
+  function setHeaderVar(){
+    const h=document.querySelector(".app-header");
+    if(h)document.documentElement.style.setProperty("--header-h",h.offsetHeight+"px");
+  }
+  setHeaderVar();
+  window.addEventListener("resize",setHeaderVar);
+})();
 </script>
-</body></html>
+</body>
+</html>
