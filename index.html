@@ -504,6 +504,40 @@ function roomCapacity(roomType){
   if(roomType.startsWith("Hevea")||roomType.startsWith("Clover"))return 999;
   return 2;
 }
+/* ── Dormitory timeline helpers ── */
+/* assignLanes: given an array of bars {startWeekIdx,endWeekIdx,...},
+   returns {bars:[{...bar,_lane:number}], numLanes:number}
+   such that overlapping bars are placed in different horizontal lanes */
+function assignLanes(bars){
+  if(!bars||!bars.length)return{bars:[],numLanes:1};
+  const sorted=[...bars].sort((a,b)=>a.startWeekIdx-b.startWeekIdx||(a.barKey||"").localeCompare(b.barKey||""));
+  const laneEnds=[];/* laneEnds[i] = first weekIdx that is FREE in lane i */
+  const result=sorted.map(bar=>{
+    let assigned=-1;
+    for(let li=0;li<laneEnds.length;li++){
+      if(laneEnds[li]<=bar.startWeekIdx){assigned=li;laneEnds[li]=bar.endWeekIdx+1;break;}
+    }
+    if(assigned===-1){laneEnds.push(bar.endWeekIdx+1);assigned=laneEnds.length-1;}
+    return{...bar,_lane:assigned};
+  });
+  return{bars:result,numLanes:Math.max(1,laneEnds.length)};
+}
+/* computeConflicts: returns array of {startWeekIdx,endWeekIdx} spans where
+   more than `cap` bars overlap simultaneously */
+function computeConflicts(bars,cap){
+  if(!bars||!bars.length||cap>=999)return[];
+  const minW=Math.min(...bars.map(b=>b.startWeekIdx));
+  const maxW=Math.max(...bars.map(b=>b.endWeekIdx));
+  const conflicts=[];
+  let inConflict=false,cStart=-1;
+  for(let w=minW;w<=maxW;w++){
+    const cnt=bars.filter(b=>b.startWeekIdx<=w&&b.endWeekIdx>=w).length;
+    if(cnt>cap){if(!inConflict){inConflict=true;cStart=w;}}
+    else{if(inConflict){conflicts.push({startWeekIdx:cStart,endWeekIdx:w-1});inConflict=false;}}
+  }
+  if(inConflict)conflicts.push({startWeekIdx:cStart,endWeekIdx:maxW});
+  return conflicts;
+}
 const NATIONALITIES = ["Korean","Chinese","Taiwanese","Japanese","Vietnamese","Thai","Indonesian","Malaysian","Saudi","Russian","Mongolian","Other"];
 const NATIONALITY_GREETING = {
   Korean:    {hi:"안녕하세요! 👋",msg:"이번 주 수업 스케줄입니다.",flag:"🇰🇷"},
@@ -626,6 +660,7 @@ const MEAL_TABLE_ROWS=[
   {id:"snack",group:"snack",gLabel:"🍕 Night Snack",label:"(JC only)",path:"nightSnack",dbCat:"nightSnack",dbField:null,wdBg:"#fef9c3",wdColor:"#92400e",wkndBg:"#e5e7eb",wkndColor:"#9ca3af",wkndDisabled:true},
   {id:"brunch",group:"brunch",gLabel:"🌊 Brunch",label:"Soup (Regular)",path:"brunchSoup",dbCat:"breakfast",dbField:"soup",wdBg:"#e5e7eb",wdColor:"#9ca3af",wdDisabled:true,wkndBg:"#cffafe",wkndColor:"#0e7490"},
 ];
+const MEAL_ROWS=MEAL_TABLE_ROWS;
 function getMealRowOptions(row,customDb){
   const base=row.dbCat==="nightSnack"?FOOD_DB.nightSnack:(FOOD_DB[row.dbCat]?.[row.dbField]||[]);
   if(!customDb)return base;
@@ -7241,9 +7276,11 @@ function TimePickerEN({value,onChange,style}){
 
 /* ── AgencyDetailPanel (top-level to prevent remount) ── */
 function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agencies}){
-  const[draft,setDraft]=useState(e);
-  const[loaText,setLoaText]=useState(e.acceptanceLetter?.text||"");
-  const[pickupText,setPickupText]=useState(e.pickupLetter?.text||"");
+  /* Guard: e must be a valid pipeline entry object */
+  const safeE=e||{};
+  const[draft,setDraft]=useState(safeE);
+  const[loaText,setLoaText]=useState(safeE.acceptanceLetter?.text||"");
+  const[pickupText,setPickupText]=useState(safeE.pickupLetter?.text||"");
   const[dormSheetRoom,setDormSheetRoom]=useState(null);
   const[driverPhoto,setDriverPhoto]=useState(()=>{try{return localStorage.getItem("hana_driver_photo")||"";}catch(e){return"";}});
   const[driverPhotoUploading,setDriverPhotoUploading]=useState(false);
@@ -7273,9 +7310,9 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
     if(!e.agencyId)return"";
     return(agencies||[]).find(a=>a.id===e.agencyId)?.nationality||"";
   });
-  useEffect(()=>{setDraft(e);setLoaText(e.acceptanceLetter?.text||"");setPickupText(e.pickupLetter?.text||"");},[e.id,e.acceptanceLetter?.confirmed,e.pickupLetter?.confirmed,e.kanbanCardId]);
+  useEffect(()=>{if(!e)return;setDraft(e);setLoaText(e.acceptanceLetter?.text||"");setPickupText(e.pickupLetter?.text||"");},[e?.id,e?.acceptanceLetter?.confirmed,e?.pickupLetter?.confirmed,e?.kanbanCardId]);
   useEffect(()=>{
-    if(e.agencyId){
+    if(e?.agencyId){
       const nat=(agencies||[]).find(a=>a.id===e.agencyId)?.nationality||"";
       setAgNatFilter(nat);
     }
@@ -8004,12 +8041,13 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
               </div>
               <div style={{padding:"16px 18px"}}>
                 <DetailPanel
-                  entry={selEntry}
+                  e={selEntry}
+                  save={save}
+                  del={del}
+                  createCard={createCard}
                   isAdmin={isAdmin}
                   agencies={agencies}
                   kanbanCards={kanbanCards}
-                  onSave={save}
-                  onCreateCard={createCard}
                 />
               </div>
             </div>
@@ -9200,17 +9238,15 @@ class ErrorBoundary extends React.Component {
 /* ── Global error logger (catches non-React errors) ── */
 window.addEventListener("error",function(e){
   const div=document.getElementById("global-err");
-  if(div){div.style.display="block";div.querySelector("pre").textContent=(e.message||"Unknown")+"\n"+(e.error?.stack||"");}
+  if(div){div.style.display="block";div.querySelector("pre").textContent="Uncaught Error: "+(e.message||e)+" @ "+(e.filename||"?")+"#"+(e.lineno||"?");}
 });
 window.addEventListener("unhandledrejection",function(e){
   const div=document.getElementById("global-err");
   if(div){div.style.display="block";div.querySelector("pre").textContent="Unhandled Promise: "+(e.reason?.message||e.reason)+"\n"+(e.reason?.stack||"");}
 });
-
 /* ── Mount ── */
 (async function(){
   try {
-    /* 5초 안에 Supabase 로드가 안 되면 타임아웃 처리하고 로컬 모드로 진입 */
     await Promise.race([
       loadFromSupabase(),
       new Promise((_,reject)=>setTimeout(()=>reject(new Error('Supabase load timeout (5s)')),5000))
@@ -9218,23 +9254,10 @@ window.addEventListener("unhandledrejection",function(e){
   } catch(err) {
     console.error("Supabase 초기 데이터 로드 실패, 로컬 모드로 진입합니다:", err);
   }
-  /* 로딩 성공 여부와 상관없이 무조건 렌더링 실행 */
   ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
 })();
 </script>
-
 <script>
-/* ── Auto-measure header height for sticky nav ── */
-(function(){
-  function setHeaderVar(){
-    var h=document.querySelector('[data-header="1"]');
-    if(h)document.documentElement.style.setProperty('--header-h',h.getBoundingClientRect().height+'px');
-  }
-  /* Run after React renders */
-  setTimeout(setHeaderVar,200);
-  window.addEventListener('resize',setHeaderVar);
-})();
+(function(){function setHeaderVar(){var h=document.querySelector('[data-header="1"]');if(h)document.documentElement.style.setProperty('--header-h',h.getBoundingClientRect().height+'px');}setTimeout(setHeaderVar,200);window.addEventListener('resize',setHeaderVar);})();
 </script>
-
-</body>
-</html>
+</body></html>
