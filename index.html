@@ -194,14 +194,10 @@ window.LOA_SIG_URL    = "https://ummzxtfjfwwdvzpsrpym.supabase.co/storage/v1/obj
 window.HANA_LOGO_SRC  = "https://ummzxtfjfwwdvzpsrpym.supabase.co/storage/v1/object/public/lms-assets/hana-logo.jpg"; /* 학원 로고 (ID카드 등) */
 </script>
 <script type="text/babel">
-
-/* ══════════════════════════════════════════════════════════════════
-   Supabase init — moved here so it's in scope for all components
-══════════════════════════════════════════════════════════════════ */
-/* ── Supabase Cloud Sync ── */
+/* ── Supabase Cloud Sync Configuration (MUST BE FIRST) ── */
 const SUPABASE_URL = 'https://ummzxtfjfwwdvzpsrpym.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtbXp4dGZqZnd3ZHZ6cHNycHltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzU3ODMsImV4cCI6MjA5MzE1MTc4M30.9u4gpsjBtvyPA6qvyUYTiAVoOsj8vez9JetzOWx0Zt8';
-const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const _sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 const HANA_SYNC_KEYS = [
   "hana_kanban_v1","hana_sched_v1","hana_week_meta","hana_draft_week","hana_archives",
@@ -216,6 +212,7 @@ let _syncTimer = null;
 
 async function syncToSupabase() {
   try {
+    if(!_sb){console.warn('Supabase not available — skipping sync');return;}
     const data = {};
     HANA_SYNC_KEYS.forEach(k => { const v = localStorage.getItem(k); if (v != null) data[k] = v; });
     const { error } = await _sb.from('app_data').upsert({ id: 'hana_main', data, updated_at: new Date().toISOString() });
@@ -226,6 +223,7 @@ async function syncToSupabase() {
 
 async function loadFromSupabase() {
   try {
+    if(!_sb){console.warn('Supabase not available — using local data');return false;}
     const { data, error } = await _sb.from('app_data').select('data').eq('id', 'hana_main').single();
     if (error || !data) { console.log('No cloud data yet — using local data'); return false; }
     let count = 0;
