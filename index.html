@@ -7974,25 +7974,44 @@ ${driverPhotoHTML}
 
 function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
   agencyPipeline,setAgencyPipeline,passwords,teacherMeta}){
+
   const agencyId=isAdmin?null:(agencies||[]).find(a=>a.id)?.id;
   const myEntries=(isAdmin?agencyPipeline:(agencyPipeline||[]).filter(e=>e.agencyId===agencyId))||[];
   const[selId,setSelId]=React.useState(null);
+  const[activeTab,setActiveTab]=React.useState("pipeline");
+  const[filterAgency,setFilterAgency]=React.useState("");
   const selEntry=(myEntries||[]).find(e=>e.id===selId)||null;
 
-  function selectEntry(e){
-    setSelId(e.id);
+  /* Country name lookup for 2-letter codes */
+  const COUNTRY_NAMES={
+    "KR":"Korea","TW":"Taiwan","JP":"Japan","CN":"China","VN":"Vietnam",
+    "TH":"Thailand","ID":"Indonesia","MY":"Malaysia","AR":"Saudi Arabia",
+    "RU":"Russia","MN":"Mongolia","PH":"Philippines","HK":"Hong Kong",
+    "SG":"Singapore","US":"United States","CA":"Canada","AU":"Australia",
+  };
+
+  /* Pipeline stage: 0=Choose Agency 1=New Reg 2=Under Reg 3=Card Created */
+  function getStage(entry){
+    if(entry.kanbanCardId)return 3;
+    if(entry.acceptanceLetter?.confirmed||entry.pickupLetter?.confirmed)return 2;
+    if((entry.members||[]).some(m=>m.name))return 1;
+    return 0;
   }
+  const STAGES=[
+    {key:0,label:"① 에이전시 고르기",color:"#6366f1",bg:"#eef2ff",desc:"에이전시 선택 대기"},
+    {key:1,label:"② 새 학생 등록",color:"#f59e0b",bg:"#fffbeb",desc:"정보 입력 중"},
+    {key:2,label:"③ 등록 중인 학생",color:"#0891b2",bg:"#ecfeff",desc:"서류 확인 완료"},
+    {key:3,label:"④ 트렐로 카드 생성",color:"#16a34a",bg:"#f0fdf4",desc:"카드 생성됨"},
+  ];
 
   function save(updated){
     setAgencyPipeline(p=>{const n=p.map(x=>x.id===updated.id?updated:x);lsSaveAgencyPipe(n);return n;});
   }
-
   function del(id){
     if(!confirm("Delete this registration?"))return;
     setAgencyPipeline(p=>{const n=p.filter(x=>x.id!==id);lsSaveAgencyPipe(n);return n;});
     if(selId===id)setSelId(null);
   }
-
   function createCard(entry){
     if(!entry.members||entry.members.length===0)return alert("Add at least one member first.");
     const newCard={
@@ -8017,112 +8036,289 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
     alert("Student card created successfully!");
   }
 
+  /* Header badge counts */
+  const underReg=(myEntries||[]).filter(e=>!e.kanbanCardId).length;
+  const hasCard=(myEntries||[]).filter(e=>!!e.kanbanCardId).length;
+  const contractedCount=(agencies||[]).length;
+
+  const allAgencyIds=[...new Set((myEntries||[]).map(e=>e.agencyId).filter(Boolean))].sort();
+  const filteredEntries=filterAgency?(myEntries||[]).filter(e=>e.agencyId===filterAgency):(myEntries||[]);
+  const listEntries=activeTab==="myStudents"?filteredEntries.filter(e=>!!e.kanbanCardId):filteredEntries;
+
+  /* Contracted agencies grouped by nationality */
+  const agByNat=React.useMemo(()=>{
+    const map={};
+    (agencies||[]).forEach(a=>{const nat=a.nationality||"??";if(!map[nat])map[nat]=[];map[nat].push(a);});
+    return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));
+  },[agencies]);
+
   const agInitials=(isAdmin?"HQ":agencyId||"AG").replace(/\(.*\)/,"").trim().slice(0,2).toUpperCase();
   const agLabel=isAdmin?"Agency Management":agencyId;
 
+  const tabBtn=(tab,label)=>(
+    <button onClick={()=>setActiveTab(tab)}
+      style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
+        background:activeTab===tab?AG_GOLD:"rgba(255,255,255,.12)",
+        color:activeTab===tab?AG_NAVY:"white",whiteSpace:"nowrap"}}>
+      {label}
+    </button>
+  );
+
   return(
-    <div>
-      <div style={{background:AG_NAVY,borderRadius:"12px 12px 0 0",padding:"16px 22px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+    <div style={{display:"flex",flexDirection:"column"}}>
+
+      {/* ── Header ── */}
+      <div style={{background:AG_NAVY,borderRadius:"12px 12px 0 0",padding:"12px 20px",
+        display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:40,height:40,borderRadius:9,background:AG_GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:AG_NAVY}}>{agInitials}</div>
+          <div style={{width:40,height:40,borderRadius:9,background:AG_GOLD,display:"flex",alignItems:"center",
+            justifyContent:"center",fontWeight:800,fontSize:16,color:AG_NAVY}}>{agInitials}</div>
           <div>
             <div style={{fontSize:14,fontWeight:800,color:"white"}}>{agLabel}</div>
-            <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Registration Pipeline</div>
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{isAdmin?"Admin · Full Access":"Agency View"}</div>
           </div>
         </div>
-        <button onClick={()=>{
-            const newEntry={
-              id:"pipe_"+Date.now(),agencyId:agencyId||"",cardType:"Individual",
-              members:[{name:"",nationality:"",birthYear:"",birthMonth:"",birthDay:"",
-                course:"",roomType:"",studyStart:"",studyEnd:"",passportPhoto:null,specialRequests:""}],
-              consultant:"",studyStart:"",studyEnd:"",
-              flightInfo:{pickupRequired:true,flightNumber:"",airport:"Clark",arrivalDate:"",arrivalTime:""},
-              acceptanceLetter:null,pickupLetter:null,kanbanCardId:null,
-              createdAt:new Date().toISOString(),
-            };
-            setAgencyPipeline(p=>{const n=[...p,newEntry];lsSaveAgencyPipe(n);return n;});
-            setSelId(newEntry.id);
-          }}
-          style={{background:AG_GOLD,color:AG_NAVY,border:"none",borderRadius:9,padding:"9px 18px",fontWeight:800,fontSize:13,cursor:"pointer"}}>
-          ＋ New Registration
-        </button>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          {/* Agency filter */}
+          <select value={filterAgency} onChange={e=>setFilterAgency(e.target.value)}
+            style={{padding:"7px 10px",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:8,
+              fontSize:12,fontWeight:700,background:"rgba(255,255,255,.12)",color:"white",cursor:"pointer"}}>
+            <option value="">All Agencies ({(myEntries||[]).length})</option>
+            {allAgencyIds.map(id=>(
+              <option key={id} value={id}>{id} ({(myEntries||[]).filter(e=>e.agencyId===id).length})</option>
+            ))}
+          </select>
+          {/* New Registration */}
+          <button onClick={()=>{
+              const newEntry={
+                id:"pipe_"+Date.now(),agencyId:agencyId||"",cardType:"Individual",
+                members:[{name:"",nationality:"",birthYear:"",birthMonth:"",birthDay:"",
+                  course:"",roomType:"",studyStart:"",studyEnd:"",passportPhoto:null,specialRequests:""}],
+                consultant:"",studyStart:"",studyEnd:"",
+                flightInfo:{pickupRequired:true,flightNumber:"",airport:"Clark",arrivalDate:"",arrivalTime:""},
+                acceptanceLetter:null,pickupLetter:null,kanbanCardId:null,
+                createdAt:new Date().toISOString(),
+              };
+              setAgencyPipeline(p=>{const n=[...p,newEntry];lsSaveAgencyPipe(n);return n;});
+              setSelId(newEntry.id);
+              setActiveTab("pipeline");
+            }}
+            style={{background:AG_GOLD,color:AG_NAVY,border:"none",borderRadius:8,
+              padding:"8px 16px",fontWeight:800,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+            ＋ New Students Registration
+          </button>
+          {tabBtn("pipeline","Under Registration ("+underReg+")")}
+          {tabBtn("myStudents","My Students in Hana ("+hasCard+")")}
+          {tabBtn("contracted","Contracted Agencies ("+contractedCount+")")}
+        </div>
       </div>
-      <div style={{display:"flex",minHeight:400,borderRadius:"0 0 12px 12px",border:"1px solid #e2e8f0",overflow:"hidden"}}>
-        <div style={{width:220,minWidth:220,borderRight:"1px solid #e2e8f0",background:"#f8fafc",overflowY:"auto"}}>
-          {myEntries.length===0?(
-            <div style={{padding:20,textAlign:"center",color:"#94a3b8",fontSize:12}}>No registrations yet.<br/>Click ＋ New Registration to start.</div>
+
+      {/* ── Contracted Agencies by Country ── */}
+      {activeTab==="contracted"?(
+        <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:"0 0 12px 12px",padding:20,minHeight:300}}>
+          <div style={{fontSize:15,fontWeight:800,color:AG_NAVY,marginBottom:16}}>📋 Contracted Agencies by Country</div>
+          {agByNat.length===0?(
+            <div style={{color:"#94a3b8",fontSize:13,textAlign:"center",padding:40}}>No agencies registered yet.</div>
           ):(
-            <div>
-              {myEntries.map(e=>{
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:16}}>
+              {agByNat.map(([nat,list])=>(
+                <div key={nat} style={{border:"1.5px solid #e2e8f0",borderRadius:10,overflow:"hidden",
+                  boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+                  <div style={{background:AG_NAVY,padding:"8px 14px",display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:15,fontWeight:800,color:AG_GOLD}}>{nat}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:"white"}}>{COUNTRY_NAMES[nat]||nat}</span>
+                    <span style={{marginLeft:"auto",fontSize:11,background:"rgba(255,255,255,.18)",color:"white",
+                      borderRadius:12,padding:"1px 9px",fontWeight:800}}>{list.length}</span>
+                  </div>
+                  <div style={{background:"#f8fafc"}}>
+                    {list.map(ag=>(
+                      <div key={ag.id} style={{padding:"8px 14px",borderBottom:"1px solid #e2e8f0",
+                        display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{ag.name||ag.id}</div>
+                          <div style={{fontSize:10,color:"#94a3b8"}}>ID: {ag.id}</div>
+                        </div>
+                        <span style={{fontSize:10,background:"#dcfce7",color:"#15803d",borderRadius:6,
+                          padding:"2px 8px",fontWeight:700,whiteSpace:"nowrap"}}>✅ Contracted</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ):(
+
+        /* ── Pipeline / My Students view ── */
+        <div style={{border:"1px solid #e2e8f0",borderRadius:"0 0 12px 12px",overflow:"hidden",background:"white"}}>
+
+          {/* Kanban pipeline overview — shown when no entry is selected */}
+          {!selEntry&&(
+            <div style={{background:"#f8fafc",borderBottom:"2px solid #e2e8f0",padding:"14px 16px 0"}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#64748b",marginBottom:10,
+                textTransform:"uppercase",letterSpacing:.8}}>Pipeline Overview</div>
+              <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:14}}>
+                {STAGES.map(st=>{
+                  const stEntries=listEntries.filter(e=>getStage(e)===st.key);
+                  return(
+                    <div key={st.key} style={{flex:"0 0 190px",minWidth:190,background:st.bg,
+                      border:"1.5px solid "+st.color+"30",borderRadius:10,overflow:"hidden"}}>
+                      <div style={{background:st.color,padding:"6px 11px",display:"flex",
+                        alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:11,fontWeight:800,color:"white",lineHeight:1.3}}>{st.label}</span>
+                        <span style={{background:"rgba(255,255,255,.28)",color:"white",borderRadius:10,
+                          fontSize:11,fontWeight:800,padding:"1px 7px"}}>{stEntries.length}</span>
+                      </div>
+                      <div style={{padding:"6px 7px",maxHeight:200,overflowY:"auto"}}>
+                        {stEntries.length===0?(
+                          <div style={{padding:"10px 4px",textAlign:"center",color:"#94a3b8",fontSize:11}}>{st.desc}</div>
+                        ):stEntries.map(e=>{
+                          const nm=(e.members||[])[0]?.name||"(unnamed)";
+                          const cnt=(e.members||[]).length;
+                          return(
+                            <div key={e.id} onClick={()=>setSelId(e.id)}
+                              style={{background:"white",borderRadius:7,padding:"6px 9px",marginBottom:5,
+                                cursor:"pointer",border:"1px solid "+st.color+"40",
+                                boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
+                              <div style={{fontSize:11,fontWeight:700,color:"#1e293b",marginBottom:1}}>
+                                {nm}{cnt>1?" +"+(cnt-1):""}
+                              </div>
+                              <div style={{fontSize:10,color:"#64748b"}}>{e.agencyId||"No agency"}</div>
+                              {e.studyStart&&<div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{e.studyStart} ~ {e.studyEnd}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Two-panel: left list + right detail */}
+          <div style={{display:"flex",minHeight:300}}>
+
+            {/* Left sidebar list */}
+            <div style={{width:230,minWidth:230,borderRight:"1px solid #e2e8f0",background:"#f8fafc",overflowY:"auto"}}>
+              <div style={{padding:"7px 14px",fontSize:10,fontWeight:800,color:"#475569",
+                textTransform:"uppercase",letterSpacing:.5,borderBottom:"1px solid #e2e8f0",background:"#f1f5f9",
+                display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span>Applications ({listEntries.length})</span>
+              </div>
+              {listEntries.length===0?(
+                <div style={{padding:20,textAlign:"center",color:"#94a3b8",fontSize:12}}>
+                  No registrations yet.<br/>Click ＋ New Students Registration to start.
+                </div>
+              ):listEntries.map(e=>{
                 const isSelected=e.id===selId;
-                const primaryName=e.members?.[0]?.name||"(unnamed)";
-                const count=e.members?.length||0;
+                const primaryName=(e.members||[])[0]?.name||"(unnamed)";
+                const count=(e.members||[]).length;
+                const stage=getStage(e);
                 return(
                   <div key={e.id} onClick={()=>selectEntry(e)}
-                    style={{padding:"12px 14px",cursor:"pointer",borderBottom:"1px solid #e2e8f0",
+                    style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid #e2e8f0",
                       background:isSelected?AG_NAVY:"white",color:isSelected?"white":"#1e293b",
-                      borderLeft:isSelected?`4px solid ${AG_GOLD}`:"4px solid transparent"}}>
-                    <div style={{fontWeight:700,fontSize:12,marginBottom:2}}>{primaryName}{count>1?` +${count-1}`:""}</div>
-                    <div style={{fontSize:10,color:isSelected?"#94a3b8":"#64748b"}}>
-                      {e.agencyId&&<span>{e.agencyId} · </span>}
-                      {e.createdAt&&new Date(e.createdAt).toLocaleDateString()}
+                      borderLeft:isSelected?"4px solid "+AG_GOLD:"4px solid transparent"}}>
+                    <div style={{fontWeight:700,fontSize:12,marginBottom:2}}>
+                      {primaryName}{count>1?" +"+(count-1):""}
                     </div>
-                    {(e.acceptanceLetter?.confirmed||e.pickupLetter?.confirmed)&&(
-                      <div style={{marginTop:3}}>
-                        <span style={{fontSize:9,background:"#dcfce7",color:"#15803d",borderRadius:6,padding:"1px 7px",fontWeight:700}}>✅ Confirmed</span>
-                      </div>
-                    )}
+                    <div style={{fontSize:10,color:isSelected?"#94a3b8":"#64748b",marginBottom:3}}>
+                      {e.agencyId&&<span style={{marginRight:4}}>{e.agencyId}</span>}
+                      {e.studyStart&&<span>{e.studyStart} ~ {e.studyEnd}</span>}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
+                      <span style={{fontSize:9,background:STAGES[stage].color,color:"white",
+                        borderRadius:6,padding:"1px 6px",fontWeight:700}}>
+                        {["①","②","③","④"][stage]}
+                      </span>
+                      {(e.acceptanceLetter?.confirmed||e.pickupLetter?.confirmed)&&(
+                        <span style={{fontSize:9,background:"#dcfce7",color:"#15803d",borderRadius:6,padding:"1px 6px",fontWeight:700}}>✅</span>
+                      )}
+                      {e.kanbanCardId&&(
+                        <span style={{fontSize:9,background:"#dbeafe",color:"#1d4ed8",borderRadius:6,padding:"1px 6px",fontWeight:700}}>🃏</span>
+                      )}
+                    </div>
                     {isAdmin&&(
                       <button onClick={ev=>{ev.stopPropagation();del(e.id);}}
-                        style={{marginTop:6,background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:6,padding:"3px 8px",fontSize:10,cursor:"pointer",fontWeight:700}}>Delete</button>
+                        style={{marginTop:5,background:"#fee2e2",color:"#dc2626",border:"none",
+                          borderRadius:6,padding:"2px 8px",fontSize:10,cursor:"pointer",fontWeight:700}}>
+                        Delete
+                      </button>
                     )}
                   </div>
                 );
               })}
             </div>
-          )}
-        </div>
-        <div style={{flex:1,overflowY:"auto",background:"white"}}>
-          {selEntry?(
-            <div style={{padding:"0 0 24px"}}>
-              <div style={{background:"#f8fafc",borderBottom:"1px solid #e2e8f0",padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
-                <div style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>
-                  {selEntry.members?.[0]?.name||"New Registration"}
-                  {selEntry.members?.length>1&&<span style={{fontSize:11,color:"#64748b",fontWeight:400,marginLeft:6}}>+{selEntry.members.length-1} more</span>}
+
+            {/* Right detail panel */}
+            <div style={{flex:1,overflowY:"auto",background:"white"}}>
+              {selEntry?(
+                <div style={{paddingBottom:24}}>
+                  <div style={{background:"#f8fafc",borderBottom:"1px solid #e2e8f0",padding:"12px 18px",
+                    display:"flex",alignItems:"center",justifyContent:"space-between",
+                    position:"sticky",top:0,zIndex:10}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>
+                      {selEntry.members?.[0]?.name||"New Registration"}
+                      {(selEntry.members?.length||0)>1&&(
+                        <span style={{fontSize:11,color:"#64748b",fontWeight:400,marginLeft:6}}>
+                          +{selEntry.members.length-1} more
+                        </span>
+                      )}
+                    </div>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <button onClick={()=>setSelId(null)}
+                        style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:6,
+                          padding:"4px 10px",fontSize:11,cursor:"pointer",color:"#64748b",fontWeight:600}}>
+                        ← Pipeline
+                      </button>
+                      {!selEntry.acceptanceLetter?.confirmed&&!selEntry.pickupLetter?.confirmed&&(
+                        <span style={{fontSize:10,background:"#fef3c7",color:"#92400e",borderRadius:8,
+                          padding:"2px 10px",fontWeight:700,border:"1px solid #fde68a"}}>⏳ Waiting for confirmation</span>
+                      )}
+                      {(selEntry.acceptanceLetter?.confirmed||selEntry.pickupLetter?.confirmed)&&(
+                        <span style={{fontSize:10,background:"#dcfce7",color:"#15803d",borderRadius:8,
+                          padding:"2px 10px",fontWeight:700,border:"1px solid #86efac"}}>✅ Ready</span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{padding:"16px 18px"}}>
+                    <DetailPanel
+                      e={selEntry}
+                      save={save}
+                      del={del}
+                      createCard={createCard}
+                      isAdmin={isAdmin}
+                      agencies={agencies}
+                      kanbanCards={kanbanCards}
+                    />
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  {!selEntry.acceptanceLetter?.confirmed&&!selEntry.pickupLetter?.confirmed&&(
-                    <span style={{fontSize:10,background:"#fef3c7",color:"#92400e",borderRadius:8,padding:"2px 10px",fontWeight:700,border:"1px solid #fde68a"}}>⏳ Waiting for confirmation</span>
-                  )}
-                  {(selEntry.acceptanceLetter?.confirmed||selEntry.pickupLetter?.confirmed)&&(
-                    <span style={{fontSize:10,background:"#dcfce7",color:"#15803d",borderRadius:8,padding:"2px 10px",fontWeight:700,border:"1px solid #86efac"}}>✅ Ready</span>
-                  )}
+              ):(
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",
+                  justifyContent:"center",height:"100%",minHeight:200,color:"#94a3b8",
+                  textAlign:"center",padding:40}}>
+                  <div style={{fontSize:36,marginBottom:10}}>👆</div>
+                  <div style={{fontSize:14,fontWeight:700,marginBottom:6,color:"#64748b"}}>
+                    파이프라인에서 항목을 선택하세요
+                  </div>
+                  <div style={{fontSize:12}}>
+                    위의 칸반 카드 또는 왼쪽 목록을 클릭하면<br/>상세 정보가 표시됩니다.
+                  </div>
                 </div>
-              </div>
-              <div style={{padding:"16px 18px"}}>
-                <DetailPanel
-                  e={selEntry}
-                  save={save}
-                  del={del}
-                  createCard={createCard}
-                  isAdmin={isAdmin}
-                  agencies={agencies}
-                  kanbanCards={kanbanCards}
-                />
-              </div>
+              )}
             </div>
-          ):(
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",minHeight:300,color:"#94a3b8",textAlign:"center",padding:40}}>
-              <div style={{fontSize:40,marginBottom:12}}>📋</div>
-              <div style={{fontSize:15,fontWeight:700,marginBottom:6,color:"#64748b"}}>Select a Registration</div>
-              <div style={{fontSize:12}}>Choose from the list on the left,<br/>or create a new registration.</div>
-            </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Fixed REFRESH button */}
       <div style={{position:"fixed",bottom:20,right:20,zIndex:999}}>
         <button onClick={()=>{if(typeof window._agencyRefresh==="function")window._agencyRefresh();else window.location.reload();}}
-          style={{background:AG_NAVY,color:"white",border:`2px solid ${AG_GOLD}`,borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:13,cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,.25)"}}>
+          style={{background:AG_NAVY,color:"white",border:"2px solid "+AG_GOLD,borderRadius:10,
+            padding:"10px 20px",fontWeight:800,fontSize:13,cursor:"pointer",
+            boxShadow:"0 4px 16px rgba(0,0,0,.25)"}}>
           🔄 REFRESH
         </button>
       </div>
