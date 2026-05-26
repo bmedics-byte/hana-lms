@@ -252,7 +252,7 @@ window.triggerSync = triggerSync;
 <script>
 window.HANA_LOGO_SRC  = "https://ummzxtfjfwwdvzpsrpym.supabase.co/storage/v1/object/public/lms-assets/hana-logo.jpg"; /* 학원 로고 (ID카드 등) */
 </script>
-<script type="text/babel" data-presets="react">
+<script type="text/babel">
 const { useState, useRef, useEffect, useMemo } = React;
 
 /* ═════════════════════════════════════════════════════
@@ -8766,41 +8766,6 @@ class ErrorBoundary extends React.Component {
 </script>
 
 <script>
-/* ── Pan-to-scroll ── */
-(function(){
-  var INTERACTIVE=['INPUT','TEXTAREA','SELECT','BUTTON','A','LABEL'];
-  var panStart=null;
-  function isInteractive(el){
-    while(el&&el!==document.body){
-      if(INTERACTIVE.indexOf(el.tagName)!==-1)return true;
-      var cls=el.className||'';
-class ErrorBoundary extends React.Component {
-  constructor(props){super(props);this.state={err:null,info:null};}
-  static getDerivedStateFromError(err){return{err};}
-  componentDidCatch(err,info){console.error("React render error:",err,info);this.setState({info});}
-  render(){
-    if(this.state.err){
-      return(
-        <div style={{padding:32,fontFamily:"monospace",background:"#fef2f2",minHeight:"100vh"}}>
-          <div style={{maxWidth:700,margin:"0 auto",background:"white",borderRadius:12,padding:24,boxShadow:"0 4px 24px rgba(0,0,0,.1)",border:"2px solid #dc2626"}}>
-            <h2 style={{color:"#dc2626",marginBottom:12,fontSize:18}}>⚠️ Runtime Error</h2>
-            <pre style={{background:"#f8fafc",padding:12,borderRadius:6,fontSize:12,overflow:"auto",maxHeight:300,color:"#1e293b",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
-              {String(this.state.err)}
-              {this.state.info?.componentStack}
-            </pre>
-            <button onClick={()=>this.setState({err:null,info:null})} style={{marginTop:12,padding:"8px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700}}>Retry</button>
-      node=node.parentElement;
-    }
-    return list;
-  }
-  document.addEventListener('mousedown',function(e){
-    if(e.button!==0)return;
-    if(isInteractive(e.target))return;
-
-/* ══ Mount ══ */
-const _root=ReactDOM.createRoot(document.getElementById("root"));
-_root.render(<App/>);
-
 /* pan-to-scroll on mobile */
 (function(){
   let startX=0,startY=0,isPan=false;
