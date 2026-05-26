@@ -193,7 +193,7 @@ window.LOA_SIG_URL    = "https://ummzxtfjfwwdvzpsrpym.supabase.co/storage/v1/obj
 /* ── Supabase Cloud Sync ── */
 const SUPABASE_URL = 'https://ummzxtfjfwwdvzpsrpym.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtbXp4dGZqZnd3ZHZ6cHNycHltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzU3ODMsImV4cCI6MjA5MzE1MTc4M30.9u4gpsjBtvyPA6qvyUYTiAVoOsj8vez9JetzOWx0Zt8';
-const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const HANA_SYNC_KEYS = [
   "hana_kanban_v1","hana_sched_v1","hana_week_meta","hana_draft_week","hana_archives",
