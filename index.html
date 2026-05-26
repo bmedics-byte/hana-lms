@@ -8379,6 +8379,26 @@ function MealPage({mealPlan,setMealPlan,mealDraft,setMealDraft,mealArchives,setM
     setVal(editCell.day,editCell.path,val!==undefined?val:inputVal.trim());
     setEditCell(null);setSuggestions([]);
   }
+  function addToCustomDb(){
+    const val=inputVal.trim();
+    if(!val||!editCell)return;
+    const row=MEAL_ROWS.find(r=>r.id===editCell.rowId);
+    if(!row)return;
+    setCustomDb(prev=>{
+      const next=JSON.parse(JSON.stringify(prev));
+      if(row.dbCat==="nightSnack"){
+        if(!next.nightSnack)next.nightSnack=[];
+        if(!next.nightSnack.includes(val))next.nightSnack.push(val);
+      }else{
+        if(!next[row.dbCat])next[row.dbCat]={};
+        if(!next[row.dbCat][row.dbField])next[row.dbCat][row.dbField]=[];
+        if(!next[row.dbCat][row.dbField].includes(val))next[row.dbCat][row.dbField].push(val);
+      }
+      lsSaveFoodDbCustom(next);
+      return next;
+    });
+    setSuggestions(prev=>[...prev,val].filter((x,i,a)=>a.indexOf(x)===i));
+  }
 
   function doCreateDraft(){
     if(draft&&!window.confirm("Overwrite existing draft?"))return;
@@ -8406,6 +8426,31 @@ function MealPage({mealPlan,setMealPlan,mealDraft,setMealDraft,mealArchives,setM
     });
     return groups;
   },[]);
+
+  /* ── Meal headcount per day ──────────────────────────────────────
+     Formula: current+leaving+incoming students (non-commuters)
+              + teachers with that meal enabled
+              − anyone who pressed Skip for that day/slot            */
+  const mealCounts=React.useMemo(()=>{
+    const studentNames=new Set(
+      (kanbanCards||[]).filter(c=>["current","leaving","incoming"].includes(c.status))
+        .flatMap(c=>(c.members||[]).filter(m=>m.name&&m.roomType!=="Commuter").map(m=>m.name))
+    );
+    const tmList=Object.entries(teacherMeta||{}).map(([n,m])=>({name:n,bf:!!(m?.meals?.breakfast),lu:!!(m?.meals?.lunch),di:!!(m?.meals?.dinner)}));
+    const res={};
+    MEAL_DAYS.forEach(mKey=>{
+      const skipDay=mealSkips?.[mKey]||{};
+      const skipBf=Object.values(skipDay).filter(v=>v?.breakfast===true).length;
+      const skipLu=Object.values(skipDay).filter(v=>v?.lunch===true).length;
+      const skipDi=Object.values(skipDay).filter(v=>v?.dinner===true).length;
+      res[mKey]={
+        breakfast:Math.max(0,studentNames.size+tmList.filter(t=>t.bf).length-skipBf),
+        lunch:Math.max(0,studentNames.size+tmList.filter(t=>t.lu).length-skipLu),
+        dinner:Math.max(0,studentNames.size+tmList.filter(t=>t.di).length-skipDi),
+      };
+    });
+    return res;
+  },[kanbanCards,teacherMeta,mealSkips]);
 
   const WKND=new Set(["Sat","Sun"]);
   const filteredSug=React.useMemo(()=>
@@ -8472,9 +8517,23 @@ function MealPage({mealPlan,setMealPlan,mealDraft,setMealDraft,mealArchives,setM
               <React.Fragment key={grp.group}>
                 {grp.gLabel&&(
                   <tr>
-                    <td colSpan={8} style={{padding:"6px 10px",fontWeight:800,fontSize:11,color:"#1e3a8a",background:"#eff6ff",borderTop:"2px solid #bfdbfe",letterSpacing:.5}}>
+                    <td style={{padding:"6px 10px",fontWeight:800,fontSize:11,color:"#1e3a8a",background:"#eff6ff",borderTop:"2px solid #bfdbfe",letterSpacing:.5,position:"sticky",left:0,zIndex:3,whiteSpace:"nowrap"}}>
                       {grp.gLabel}
                     </td>
+                    {MEAL_DAYS.map(d=>{
+                      const slot={breakfast:"breakfast",lunch:"lunch",dinner:"dinner",snack:"dinner",brunch:"breakfast"}[grp.group]||null;
+                      const cnt=slot?mealCounts?.[d]?.[slot]:null;
+                      const isWkd=WKND.has(d);
+                      return(
+                        <td key={d} style={{background:"#eff6ff",borderTop:"2px solid #bfdbfe",textAlign:"center",padding:"3px 2px",minWidth:120}}>
+                          {cnt!=null?(
+                            <span style={{fontSize:9,fontWeight:700,color:isWkd?"#92400e":"#1e40af",background:isWkd?"#fef9c3":"#dbeafe",padding:"2px 7px",borderRadius:9,whiteSpace:"nowrap"}}>
+                              👥 {cnt}
+                            </span>
+                          ):null}
+                        </td>
+                      );
+                    })}
                   </tr>
                 )}
                 {grp.rows.map((row,ri)=>(
@@ -8495,11 +8554,17 @@ function MealPage({mealPlan,setMealPlan,mealDraft,setMealDraft,mealArchives,setM
                             <div style={{padding:"6px 8px",color:"#9ca3af",fontSize:10}}>—</div>
                           ):isEditing?(
                             <div style={{position:"relative"}}>
-                              <input ref={inputRef} value={inputVal}
-                                onChange={e=>setInputVal(e.target.value)}
-                                onBlur={()=>setTimeout(commitEdit,160)}
-                                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();commitEdit();}if(e.key==="Escape"){setEditCell(null);setSuggestions([]);}}}
-                                style={{width:"100%",padding:"5px 8px",border:"2px solid #3b82f6",borderRadius:0,fontSize:11,outline:"none",background:"white",color:"#0f172a"}}/>
+                              <div style={{display:"flex",alignItems:"stretch"}}>
+                                <input ref={inputRef} value={inputVal}
+                                  onChange={e=>setInputVal(e.target.value)}
+                                  onBlur={()=>setTimeout(commitEdit,160)}
+                                  onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();commitEdit();}if(e.key==="Escape"){setEditCell(null);setSuggestions([]);}}}
+                                  style={{flex:1,minWidth:0,padding:"5px 8px",border:"2px solid #3b82f6",borderRight:"none",borderRadius:0,fontSize:11,outline:"none",background:"white",color:"#0f172a"}}/>
+                                <button
+                                  onMouseDown={e=>{e.preventDefault();addToCustomDb();}}
+                                  title="Add to food database"
+                                  style={{padding:"0 8px",background:"#3b82f6",color:"white",border:"2px solid #3b82f6",borderLeft:"none",cursor:"pointer",fontSize:15,fontWeight:800,flexShrink:0,lineHeight:1}}>+</button>
+                              </div>
                               {filteredSug.length>0&&(
                                 <div style={{position:"absolute",top:"100%",left:0,right:0,background:"white",border:"1px solid #bfdbfe",borderRadius:"0 0 8px 8px",boxShadow:"0 6px 16px rgba(0,0,0,.12)",zIndex:100,maxHeight:160,overflowY:"auto"}}>
                                   {filteredSug.map((s,i)=>(
