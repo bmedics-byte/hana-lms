@@ -183,6 +183,11 @@
 </head>
 <body>
 <div id="root"></div>
+<div id="global-err" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99999;background:#fff1f2;border-bottom:3px solid #dc2626;padding:12px 20px;font-family:monospace">
+  <strong style="color:#dc2626;font-size:13px">⚠️ Global JS Error (아래 내용을 복사해 주세요):</strong>
+  <pre style="margin:6px 0 0;font-size:11px;color:#1e293b;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow:auto"></pre>
+  <button onclick="this.parentNode.style.display='none'" style="margin-top:6px;padding:3px 10px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px">닫기</button>
+</div>
 <script>
 /* LOA letterhead & signature images (outside Babel to avoid parser limits) */
 /* ─── Supabase Storage 이미지 URL (lms-assets 버킷에 미리 업로드 필요) ─── */
@@ -473,6 +478,32 @@ const ROOM_FLOORS = [
   {floor:"2nd Floor",rooms:["201","202","203","204","206","207","209","210","211","212","214","215"]},
   {floor:"3rd Floor",rooms:["301","302","303","304","305","306","307","308","309","310","311","312","314","315","316"]},
 ];
+/* ── Dormitory layout & display constants ── */
+const DORM_SECTIONS=[
+  {section:"1st Floor",rooms:[101,102,103,104,106,107,109,110,111,112,114,115]},
+  {section:"2nd Floor",rooms:[201,202,203,204,206,207,209,210,211,212,214,215]},
+  {section:"3rd Floor",rooms:[301,302,303,304,305,306,307,308,309,310,311,312,314,315,316]},
+  {section:"Hotels",rooms:[9901,9902]},
+];
+/* Virtual IDs for hotel properties (no physical room number) */
+const HOTEL_VIRTUAL_ROOMS={9901:"Hevea Hotel",9902:"Clover Hotel"};
+/* Rooms that can accommodate families (higher capacity display) */
+const FAMILY_ROOM_SET=new Set(["101","102","201","202","301","302"]);
+/* Color palette for dormitory Gantt bars */
+const DORM_PALETTE=["#60a5fa","#34d399","#f87171","#fbbf24","#a78bfa","#fb923c","#38bdf8","#4ade80","#f472b6","#facc15","#818cf8","#2dd4bf","#f97316","#06b6d4","#8b5cf6","#10b981"];
+/* Card types that represent a family enrollment group */
+const FAMILY_CARD_TYPES=new Set(["Family","Family Card"]);
+/* Return numeric capacity for a given room-type string */
+function roomCapacity(roomType){
+  if(!roomType)return 1;
+  if(roomType.includes("for 5"))return 5;
+  if(roomType.includes("for 4"))return 4;
+  if(roomType.includes("for 3"))return 3;
+  if(roomType.includes("for 2"))return 2;
+  if(roomType.includes("for 1"))return 1;
+  if(roomType.startsWith("Hevea")||roomType.startsWith("Clover"))return 999;
+  return 2;
+}
 const NATIONALITIES = ["Korean","Chinese","Taiwanese","Japanese","Vietnamese","Thai","Indonesian","Malaysian","Saudi","Russian","Mongolian","Other"];
 const NATIONALITY_GREETING = {
   Korean:    {hi:"안녕하세요! 👋",msg:"이번 주 수업 스케줄입니다.",flag:"🇰🇷"},
@@ -2274,23 +2305,24 @@ function fmtMD(dateStr){
 function KanbanCard({card,onMove,onEdit,colIdx,isDragging,onDragStart,onDragEnd,onDragOver}){
   const isFamily=card.type==="Group/Family";
   /* Always display oldest member as Guardian — sort by birthYear ascending */
-  const sortedForDisplay=isFamily&&card.members.length>1
+  const _members=card.members||[];
+  const sortedForDisplay=isFamily&&_members.length>1
     ?(()=>{
-      const pinned=card.members.find(m=>m.isGuardian);
-      if(pinned)return[pinned,...card.members.filter(m=>!m.isGuardian)];
-      return [...card.members].sort((a,b)=>(a.birthYear?parseInt(a.birthYear):9999)-(b.birthYear?parseInt(b.birthYear):9999));
+      const pinned=_members.find(m=>m.isGuardian);
+      if(pinned)return[pinned,..._members.filter(m=>!m.isGuardian)];
+      return [..._members].sort((a,b)=>(a.birthYear?parseInt(a.birthYear):9999)-(b.birthYear?parseInt(b.birthYear):9999));
     })()
-    :card.members;
+    :_members;
   const g=sortedForDisplay[0]||{};
   const nat=g.nationality||"";
   const natCode=NAT_CODE[nat]||nat.slice(0,2).toUpperCase()||"";
   const rt=g.roomType||"";
   const rn=g.roomNumber||"";
   /* Study period from guardian (longest/guardian's dates) */
-  const allWeeks=card.members.map(m=>weekCount(m.studyStart,m.studyEnd)).filter(w=>w>0);
+  const allWeeks=_members.map(m=>weekCount(m.studyStart,m.studyEnd)).filter(w=>w>0);
   const maxWeeks=allWeeks.length?Math.max(...allWeeks):0;
   /* Find the member with maxWeeks for period display */
-  const periodMember=card.members.find(m=>weekCount(m.studyStart,m.studyEnd)===maxWeeks)||g;
+  const periodMember=_members.find(m=>weekCount(m.studyStart,m.studyEnd)===maxWeeks)||g;
   const ps=fmtMD(periodMember.studyStart);
   const pe=fmtMD(periodMember.studyEnd);
   const periodStr=ps&&pe?ps+" – "+pe:ps||pe||"";
@@ -2321,7 +2353,7 @@ function KanbanCard({card,onMove,onEdit,colIdx,isDragging,onDragStart,onDragEnd,
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,gap:6}}>
         <div style={{fontSize:13,fontWeight:700,color:"#1e293b",lineHeight:1.3,minWidth:0}}>
           {isFamily
-            ?<>{g.name||"—"} <span style={{fontWeight:400,color:"#6b7280"}}>+{card.members.length-1}</span></>
+            ?<>{g.name||"—"} <span style={{fontWeight:400,color:"#6b7280"}}>+{(card.members||[]).length-1}</span></>
             :(g.name||"—")}
         </div>
         {natCode&&<span style={{fontSize:10,fontWeight:800,color:"#1d4ed8",background:"#eff6ff",borderRadius:5,padding:"1px 6px",whiteSpace:"nowrap",flexShrink:0}}>{natCode}</span>}
@@ -2335,7 +2367,7 @@ function KanbanCard({card,onMove,onEdit,colIdx,isDragging,onDragStart,onDragEnd,
       )}
 
       {/* Row 4: Other family members */}
-      {card.members.length>1&&(
+      {(card.members||[]).length>1&&(
         <div style={{display:"flex",flexWrap:"wrap",gap:4,paddingTop:5,borderTop:"1px solid #f1f5f9"}}>
           {sortedForDisplay.slice(1).map((m,i)=>(
             <span key={i} style={{fontSize:10,fontWeight:600,color:"#374151",background:"#f1f5f9",borderRadius:5,padding:"1px 6px"}}>{m.name||"—"}</span>
@@ -2936,14 +2968,14 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
 
   const cardColorMap=React.useMemo(()=>{
     const map={};let idx=0;
-    kanbanCards.forEach(c=>{if(!map[c.id])map[c.id]=DORM_PALETTE[idx++%DORM_PALETTE.length];});
+    (kanbanCards||[]).forEach(c=>{if(!map[c.id])map[c.id]=DORM_PALETTE[idx++%DORM_PALETTE.length];});
     return map;
   },[kanbanCards]);
 
   const roomBars=React.useMemo(()=>{
     const rb={};
     const ACTIVE=["registered","current","incoming","leaving","graduated","archived"];
-    kanbanCards.filter(c=>ACTIVE.includes(c.status)).forEach(card=>{
+    (kanbanCards||[]).filter(c=>ACTIVE.includes(c.status)).forEach(card=>{
       const isFamilyCard=FAMILY_CARD_TYPES.has(card.type);
       function pushBar(roomNumStr,startStr,endStr,label,barKeyBase,extra){
         const rt=(extra&&extra.roomType)||"";
@@ -2965,18 +2997,19 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
           startWeekIdx:Math.max(0,si),endWeekIdx:Math.min(NUM_WEEKS-1,ei),...extra});
       }
       if(isFamilyCard){
-        const rep=card.members[0]||{};
+        const _cardMem=card.members||[];
+        const rep=_cardMem[0]||{};
         const nat=rep.nationality||"";
         const natCode=NAT_CODE[nat]||nat.slice(0,2).toUpperCase()||"";
         const repName=(rep.name||"?");
-        const extra=card.members.length-1;
+        const extra=_cardMem.length-1;
         const label=repName+(extra>0?"+"+extra:"")+(natCode?"("+natCode+")":"");
         const segs=getEffectiveRoomSegments(rep);
         if(segs.length>0){
           segs.forEach((seg,si2)=>pushBar(seg.roomNumber,seg.from,seg.to,label,card.id+"_fam_"+seg.roomNumber+"_s"+si2,{cardId:card.id,isFamily:true,roomType:rep.roomType||""}));
         } else {
           const byRoom={};
-          card.members.forEach(m=>{
+          (card.members||[]).forEach(m=>{
             const rn=(m.roomNumber||"").trim();
             if(!rn||!m.studyStart||!m.studyEnd)return;
             if(!byRoom[rn])byRoom[rn]={starts:[],ends:[],roomType:m.roomType||""};
@@ -2988,7 +3021,7 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
           });
         }
       } else {
-        card.members.forEach((m,mi)=>{
+        (card.members||[]).forEach((m,mi)=>{
           if(!m.studyStart||!m.studyEnd)return;
           const nat=m.nationality||"";
           const natCode=NAT_CODE[nat]||nat.slice(0,2).toUpperCase()||"";
@@ -3242,7 +3275,7 @@ function generatePrintHTML(members, cardId, bannerTop, bannerBottom){
       ${botHTML}
     </div>`;
   }
-  const cardsHTML=members.filter(m=>m.name).map(m=>oneCard(m)).join("");
+  const cardsHTML=(members||[]).filter(m=>m.name).map(m=>oneCard(m)).join("");
   return `<!DOCTYPE html><html><head><title>Hana Academy ID Cards</title>
     <style>body{margin:0;padding:20px;background:#f3f4f6;display:flex;flex-wrap:wrap;gap:20px;justify-content:center;font-family:Arial,sans-serif}
     @media print{body{background:white;padding:10px;gap:15px}}</style></head>
@@ -3713,12 +3746,12 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
             <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",marginBottom:6}}>
               {isFamily?"Family Members":"Student Information"}
             </div>
-            {members.map((m,i)=>(
+            {(members||[]).map((m,i)=>(
               <MemberForm key={i} index={i} member={m} isFamily={isFamily}
                 onChange={m2=>updateMember(i,m2)}
-                showRemove={isFamily&&members.length>1}
+                showRemove={isFamily&&(members||[]).length>1}
                 onRemove={()=>removeMember(i)}
-                siblings={isFamily?members.filter((_,j)=>j!==i):[]}
+                siblings={isFamily?(members||[]).filter((_,j)=>j!==i):[]}
                 onDormSheet={kanbanCards?rn=>setDormSheetRoom(rn):null}/>
             ))}
             {isFamily&&(
@@ -3794,7 +3827,7 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
               w.document.close();
             }}
             style={{marginTop:10,width:"100%",padding:"9px",background:"#0d9488",color:"white",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>
-            🖨️ Print All ID Cards ({members.filter(m=>m.name).length})
+            🖨️ Print All ID Cards ({(members||[]).filter(m=>m.name).length})
           </button>
         </div>}
         </div>{/* end flex row */}
@@ -3815,7 +3848,7 @@ function CurrentStudentListPage({kanbanCards}){
   /* Flatten all members from current/leaving cards into individual rows */
   const allMembers=React.useMemo(()=>{
     const rows=[];
-    kanbanCards.filter(c=>CURRENT_STATUSES.includes(c.status)).forEach(card=>{
+    (kanbanCards||[]).filter(c=>CURRENT_STATUSES.includes(c.status)).forEach(card=>{
       (card.members||[]).forEach(m=>{
         if(!m.name)return;
         const age=m.birthYear?new Date().getFullYear()-parseInt(m.birthYear):null;
@@ -4184,21 +4217,22 @@ function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
   const dragOverRef=useRef(null); // sync mirror — avoids stale closure in handleDrop
   function setDragOver(v){dragOverRef.current=v;setDragOverState(v);}
 
+  const _kc=kanbanCards||[];
   function saveCard(card){
-    const exists=kanbanCards.find(c=>c.id===card.id);
-    pushSnap({kanbanCards:exists?kanbanCards.map(c=>c.id===card.id?card:c):[...kanbanCards,card]});
+    const exists=_kc.find(c=>c.id===card.id);
+    pushSnap({kanbanCards:exists?_kc.map(c=>c.id===card.id?card:c):[..._kc,card]});
     setModal(null);
   }
   function moveCard(cardId,dir){
-    const card=kanbanCards.find(c=>c.id===cardId);if(!card)return;
+    const card=_kc.find(c=>c.id===cardId);if(!card)return;
     const ci=KANBAN_COLS.findIndex(c=>c.id===card.status);
     const ni=dir==="next"?ci+1:ci-1;
     if(ni<0||ni>=KANBAN_COLS.length)return;
-    pushSnap({kanbanCards:kanbanCards.map(c=>c.id===cardId?{...c,status:KANBAN_COLS[ni].id}:c)});
+    pushSnap({kanbanCards:_kc.map(c=>c.id===cardId?{...c,status:KANBAN_COLS[ni].id}:c)});
   }
   function deleteCard(cardId){setConfirmDelete(cardId);}
-  function doDelete(){if(confirmDelete)pushSnap({kanbanCards:kanbanCards.filter(c=>c.id!==confirmDelete)});setConfirmDelete(null);}
-  function archiveCard(cardId){pushSnap({kanbanCards:kanbanCards.map(c=>c.id===cardId?{...c,status:"archived"}:c)});setModal(null);}
+  function doDelete(){if(confirmDelete)pushSnap({kanbanCards:_kc.filter(c=>c.id!==confirmDelete)});setConfirmDelete(null);}
+  function archiveCard(cardId){pushSnap({kanbanCards:_kc.map(c=>c.id===cardId?{...c,status:"archived"}:c)});setModal(null);}
 
   /* ── Drag & Drop ── */
   function handleDragStart(e,card){
@@ -4237,7 +4271,7 @@ function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
     /* Find nearest insertion point by cursor Y vs card midpoints */
     const dropY=e.clientY;
     const curDragId=dragIdRef.current;
-    const colCards=kanbanCards.filter(c=>c.status===colId&&c.id!==curDragId);
+    const colCards=(kanbanCards||[]).filter(c=>c.status===colId&&c.id!==curDragId);
     let nearestBeforeId=null;
     for(let i=0;i<colCards.length;i++){
       const el=document.querySelector(`[data-card-id="${colCards[i].id}"]`);
@@ -4252,13 +4286,13 @@ function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
   function handleDrop(e,colId){
     e.preventDefault();kbStopScroll();
     if(!dragId)return;
-    const movedCard=kanbanCards.find(c=>c.id===dragId);
+    const movedCard=(kanbanCards||[]).find(c=>c.id===dragId);
     if(!movedCard)return;
     /* Use ref (always latest, no stale-closure risk); fall back to cursor-based nearest lookup */
     let beforeId=dragOverRef.current?.colId===colId?dragOverRef.current?.beforeId:null;
     if(beforeId===null){
       const dropY=e.clientY;
-      const colCards=kanbanCards.filter(c=>c.status===colId&&c.id!==dragIdRef.current);
+      const colCards=(kanbanCards||[]).filter(c=>c.status===colId&&c.id!==dragIdRef.current);
       for(let i=0;i<colCards.length;i++){
         const el=document.querySelector(`[data-card-id="${colCards[i].id}"]`);
         if(!el)continue;
@@ -4266,7 +4300,7 @@ function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
         if(dropY<rect.top+rect.height/2){beforeId=colCards[i].id;break;}
       }
     }
-    let cards=kanbanCards.filter(c=>c.id!==dragId);
+    let cards=(kanbanCards||[]).filter(c=>c.id!==dragId);
     const updated={...movedCard,status:colId};
     if(beforeId){
       const ti=cards.findIndex(c=>c.id===beforeId);
@@ -4281,10 +4315,10 @@ function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
   }
 
   const q=filter.toLowerCase();
-  const vis=q?kanbanCards.filter(c=>c.members.some(m=>m.name.toLowerCase().includes(q))):kanbanCards;
-  const cur=kanbanCards.filter(c=>c.status==="current").length;
-  const inc=kanbanCards.filter(c=>c.status==="incoming").length;
-  const lv=kanbanCards.filter(c=>c.status==="leaving").length;
+  const vis=q?(kanbanCards||[]).filter(c=>(c.members||[]).some(m=>(m.name||"").toLowerCase().includes(q))):(kanbanCards||[]);
+  const cur=(kanbanCards||[]).filter(c=>c.status==="current").length;
+  const inc=(kanbanCards||[]).filter(c=>c.status==="incoming").length;
+  const lv=(kanbanCards||[]).filter(c=>c.status==="leaving").length;
   const isDragging=!!dragId;
 
   return(
@@ -4425,7 +4459,7 @@ function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
                               <div key={ap} style={{marginLeft:8,marginBottom:4}}>
                                 <div style={{fontWeight:700,color:"#92400e",marginBottom:2}}>🛬 {AIRPORT_LABELS[ap]||ap}</div>
                                 {entries.map(e=>{
-                                  const names=e.members.map(m=>m.name||"").filter(Boolean);
+                                  const names=(e.members||[]).map(m=>m.name||"").filter(Boolean);
                                   const disp=(names[0]||"(unnamed)")+(names.length>1?` +${names.length-1}`:"");
                                   return(
                                     <div key={e.id} style={{paddingLeft:12,marginBottom:2,color:"#713f12",lineHeight:1.6}}>
@@ -4457,7 +4491,7 @@ function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
           onDelete={modal.card?()=>deleteCard(modal.card.id):null}
           onArchive={modal.card?(
             modal.card.status==="archived"
-              ?()=>pushSnap({kanbanCards:kanbanCards.map(c=>c.id===modal.card.id?{...c,status:"registered"}:c)})||setModal(null)
+              ?()=>pushSnap({kanbanCards:(kanbanCards||[]).map(c=>c.id===modal.card.id?{...c,status:"registered"}:c)})||setModal(null)
               :()=>archiveCard(modal.card.id)
           ):null}
           isArchived={modal.card?.status==="archived"}
@@ -5000,12 +5034,12 @@ function getTransferAdjustedSpec(student,memberData,kanbanCards){
   if(!baseSpec)return null;
   let inPH=0,inNA=0,outPH=0,outNA=0;
   const fCard=(kanbanCards||[]).find(c=>
-    c.type==="Group/Family"&&c.members.some(m=>m.name===student)
+    c.type==="Group/Family"&&(c.members||[]).some(m=>m.name===student)
   );
   if(fCard){
-    const me=fCard.members.find(m=>m.name===student);
+    const me=(fCard.members||[]).find(m=>m.name===student);
     (me?.noClassTransfers||[]).forEach(t=>{outPH+=(t.ph||0);outNA+=(t.na||0);});
-    fCard.members.filter(m=>m.name!==student).forEach(m=>{
+    (fCard.members||[]).filter(m=>m.name!==student).forEach(m=>{
       (m.noClassTransfers||[]).filter(t=>t.toName===student).forEach(t=>{
         inPH+=(t.ph||0);inNA+=(t.na||0);
       });
@@ -6622,9 +6656,9 @@ function getGuardianChildren(name,kanbanCards){
   const out=[];
   kanbanCards.forEach(card=>{
     if(card.type!=="Group/Family")return;
-    const isGuard=card.members.some(m=>m.name===name&&m.isGuardian);
+    const isGuard=(card.members||[]).some(m=>m.name===name&&m.isGuardian);
     if(!isGuard)return;
-    card.members.forEach(m=>{if(m.name!==name)out.push(m.name);});
+    (card.members||[]).forEach(m=>{if(m.name!==name)out.push(m.name);});
   });
   return out;
 }
@@ -7099,15 +7133,16 @@ function MessengerModal({currentUser,otherUser,isAdmin,isGroup,groupKey,groupLab
 function makeLoaText(entry){
   const MON=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
   const MONFULL=["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"];
-  const names=entry.members.map(m=>(m.name||"").toUpperCase()).filter(Boolean).join(" / ")||"___";
-  const dobs=entry.members.map(m=>{
+  const _em=entry.members||[];
+  const names=_em.map(m=>(m.name||"").toUpperCase()).filter(Boolean).join(" / ")||"___";
+  const dobs=_em.map(m=>{
     if(!m.birthMonth&&!m.birthDay&&!m.birthYear)return"N/A";
     const mon=MON[(parseInt(m.birthMonth)||1)-1]||"";
     return`${mon},${String(m.birthDay||"").padStart(2,"0")},${m.birthYear||""}`;
   }).join(" / ");
-  const country=(entry.members[0]?.nationality||"TAIWAN").toUpperCase();
+  const country=(_em[0]?.nationality||"TAIWAN").toUpperCase();
   function fmtD(s){if(!s)return"___";const[y,mo,d]=s.split("-");return`${MONFULL[(parseInt(mo)||1)-1]},${parseInt(d)},${y}`;}
-  const prog=[...new Set(entry.members.map(m=>m.course).filter(Boolean))].join(", ").toUpperCase()||"___";
+  const prog=[...new Set(_em.map(m=>m.course).filter(Boolean))].join(", ").toUpperCase()||"___";
   const{start:_s,end:_e}=entryDates(entry);
   const start=fmtD(_s);const end=fmtD(_e);
   return`NAME OF STUDENT : ${names}
@@ -7129,7 +7164,7 @@ Sincerely,`;
 
 function makePickupText(entry){
   const fl=entry.flightInfo||{};
-  const names=entry.members.map(m=>m.name||"").filter(Boolean);
+  const names=(entry.members||[]).map(m=>m.name||"").filter(Boolean);
   const disp=(names[0]||"___")+(names.length>1?`+${names.length-1}`:"");
   const AIRPORTS={"Clark":"clark airport","Manila1":"NAIA Terminal 1","Manila2":"NAIA Terminal 2","Manila3":"NAIA Terminal 3"};
   const airLabel=AIRPORTS[fl.airport]||fl.airport||"___";
@@ -7248,12 +7283,12 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
 
   function upd(changes){const u={...draft,...changes};setDraft(u);save(u);}
   function updFlight(changes){upd({flightInfo:{...draft.flightInfo,...changes}});}
-  function updMember(i,m){upd({members:draft.members.map((x,j)=>j===i?m:x)});}
+  function updMember(i,m){upd({members:(draft.members||[]).map((x,j)=>j===i?m:x)});}
   function addMember(){
-    const first=draft.members[0]||{};
-    upd({members:[...draft.members,{name:"",birthYear:"",birthMonth:"",birthDay:"",nationality:first.nationality||"Taiwanese",course:"",roomType:first.roomType||"",roomNumber:"",studyStart:first.studyStart||"",studyEnd:first.studyEnd||"",passportPhoto:null,specialRequests:""}]});
+    const first=(draft.members||[])[0]||{};
+    upd({members:[...(draft.members||[]),{name:"",birthYear:"",birthMonth:"",birthDay:"",nationality:first.nationality||"Taiwanese",course:"",roomType:first.roomType||"",roomNumber:"",studyStart:first.studyStart||"",studyEnd:first.studyEnd||"",passportPhoto:null,specialRequests:""}]});
   }
-  function removeMember(i){if(draft.members.length<=1)return;upd({members:draft.members.filter((_,j)=>j!==i)});}
+  function removeMember(i){if((draft.members||[]).length<=1)return;upd({members:(draft.members||[]).filter((_,j)=>j!==i)});}
 
   const steps=getSteps(draft);
   const TEAL="#0d9488";const TEAL_BG="#f0fdfa";const TEAL_BORDER="#99f6e4";const TEAL_MID="#5eead4";
@@ -7380,7 +7415,7 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
   }
   function printPickup(){
     const fl=draft.flightInfo||{};
-    const names=draft.members.map(m=>m.name||"").filter(Boolean);
+    const names=(draft.members||[]).map(m=>m.name||"").filter(Boolean);
     const disp=(names[0]||"")+(names.length>1?`+${names.length-1}`:"");
     const AIRPORTS={"Clark":"clark airport","Manila1":"NAIA Terminal 1","Manila2":"NAIA Terminal 2","Manila3":"NAIA Terminal 3"};
     const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -7405,7 +7440,7 @@ ${driverPhotoHTML}
   /* Ghost cards: temporary room reservations */
   const ghostCards=React.useMemo(()=>{
     if(draft.kanbanCardId)return[];
-    return draft.members
+    return (draft.members||[])
       .filter(m=>(m.roomNumber||m.roomType?.startsWith("Hevea Hotel")||m.roomType?.startsWith("Clover Hotel"))&&(m.studyStart||draft.studyStart)&&(m.studyEnd||draft.studyEnd))
       .map((m,mi)=>({
         id:"ghost_"+draft.id+"_m"+mi,
@@ -7528,11 +7563,11 @@ ${driverPhotoHTML}
             <input style={INP} value={draft.consultant||""} onChange={ev=>upd({consultant:ev.target.value})}
               placeholder="담당 상담원 이름 (e.g. Johnny)"/>
           </div>
-          {draft.members.map((m,i)=>(
+          {(draft.members||[]).map((m,i)=>(
             <div key={i} style={{background:"white",borderRadius:12,padding:"14px 16px",marginBottom:12,border:`1.5px solid ${i===0?TEAL_BORDER:"#e2e8f0"}`,borderLeft:`4px solid ${i===0?TEAL:"#cbd5e1"}`,boxShadow:"0 1px 6px rgba(0,0,0,.04)"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
                 <span style={{fontSize:12,fontWeight:800,color:i===0?TEAL:"#475569"}}>Student {i+1} {i===0?"(Primary)":""}</span>
-                {draft.members.length>1&&<button onClick={()=>removeMember(i)} style={{...B,background:"#fee2e2",color:"#dc2626",padding:"4px 10px",fontSize:11}}>− Remove</button>}
+                {(draft.members||[]).length>1&&<button onClick={()=>removeMember(i)} style={{...B,background:"#fee2e2",color:"#dc2626",padding:"4px 10px",fontSize:11}}>− Remove</button>}
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
                 <div><div style={LBL}>Name (LAST, FIRST)</div>
@@ -7740,7 +7775,7 @@ ${driverPhotoHTML}
                   <div style={{background:"white",border:"1.5px solid #fed7aa",borderRadius:8,overflow:"hidden",marginBottom:10}}>
                     {(()=>{
                       const fl2=draft.flightInfo||{};
-                      const names2=draft.members.map(mb=>mb.name||"").filter(Boolean);
+                      const names2=(draft.members||[]).map(mb=>mb.name||"").filter(Boolean);
                       const disp2=(names2[0]||"")+(names2.length>1?`+${names2.length-1}`:"");
                       const AIRPORTS2={"Clark":"Clark Airport (CRK)","Manila1":"NAIA Terminal 1","Manila2":"NAIA Terminal 2","Manila3":"NAIA Terminal 3"};
                       const WDAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -7839,15 +7874,13 @@ ${driverPhotoHTML}
 /* ════════════════════════════════════════════════════════════════════
    Agency Pipeline
    ════════════════════════════════════════════════════════════════════ */
-const AG_NAVY="#0f2044";
-const AG_GOLD="#f5b800";
 
 function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
   agencyPipeline,setAgencyPipeline,passwords,teacherMeta}){
   const agencyId=isAdmin?null:(agencies||[]).find(a=>a.id)?.id;
-  const myEntries=isAdmin?agencyPipeline:(agencyPipeline||[]).filter(e=>e.agencyId===agencyId);
+  const myEntries=(isAdmin?agencyPipeline:(agencyPipeline||[]).filter(e=>e.agencyId===agencyId))||[];
   const[selId,setSelId]=React.useState(null);
-  const selEntry=myEntries.find(e=>e.id===selId)||null;
+  const selEntry=(myEntries||[]).find(e=>e.id===selId)||null;
 
   function selectEntry(e){
     setSelId(e.id);
@@ -7869,7 +7902,7 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
       id:"card_"+Date.now(),
       type:entry.cardType||"Individual",
       status:"current",
-      members:entry.members.map(m=>({
+      members:(entry.members||[]).map(m=>({
         name:m.name||"",nationality:m.nationality||"",
         birthYear:m.birthYear||"",birthMonth:m.birthMonth||"",birthDay:m.birthDay||"",
         course:m.course||"",roomType:m.roomType||"",
@@ -7938,16 +7971,9 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
                       {e.createdAt&&new Date(e.createdAt).toLocaleDateString()}
                     </div>
                     {(e.acceptanceLetter?.confirmed||e.pickupLetter?.confirmed)&&(
-          </div>
-
-          {/* Add form */}
-          <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap",padding:"12px 16px",background:"#f7f8fc",borderRadius:9,border:"1px solid #e4e6f0",marginBottom:18}}>
-            <div>
-              <div style={{fontSize:10,fontWeight:700,color:AG_NAVY,marginBottom:3}}>Nationality *</div>
-              <input value={newAgNat} onChange={e=>setNewAgNat(e.target.value)} placeholder="TW / KR / JP"
-                style={{...INP2,width:68}}/>
-            </div>
-            <div>
+                      <div style={{marginTop:3}}>
+                        <span style={{fontSize:9,background:"#dcfce7",color:"#15803d",borderRadius:6,padding:"1px 7px",fontWeight:700}}>✅ Confirmed</span>
+                      </div>
                     )}
                     {isAdmin&&(
                       <button onClick={ev=>{ev.stopPropagation();del(e.id);}}
@@ -8153,8 +8179,8 @@ function DormitoryPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
     return ghosts;
   },[agencyPipeline]);
 
-  const allCards=React.useMemo(()=>[...(kanbanCards||[]),...ghostCards],[kanbanCards,ghostCards]);
-  const ghostCardIds=React.useMemo(()=>new Set(ghostCards.map(g=>g.id)),[ghostCards]);
+  const allCards=React.useMemo(()=>[...(kanbanCards||[]),...(ghostCards||[])],[kanbanCards,ghostCards]);
+  const ghostCardIds=React.useMemo(()=>new Set((ghostCards||[]).map(g=>g.id)),[ghostCards]);
 
   /* Current occupancy: roomNumber (string) → [{name, nationality, studyEnd, isGhost}] */
   const occupancyMap=React.useMemo(()=>{
@@ -8484,10 +8510,6 @@ function lsLoadKanban(){try{return JSON.parse(localStorage.getItem(LS_KEY)||"[]"
 function lsSaveKanban(arr){localStorage.setItem(LS_KEY,JSON.stringify(arr));}
 const LS_PIPE_KEY="hana_agency_pipe_v1";
 function lsLoadAgencyPipe(){try{return JSON.parse(localStorage.getItem(LS_PIPE_KEY)||"[]");}catch(e){return[];}}
-function lsSaveAgencyPipe(arr){localStorage.setItem(LS_PIPE_KEY,JSON.stringify(arr));}
-const LS_AGENCIES_KEY="hana_agencies_v1";
-function lsLoadAgencies(){try{return JSON.parse(localStorage.getItem(LS_AGENCIES_KEY)||"[]");}catch(e){return[];}}
-function lsSaveAgencies(arr){localStorage.setItem(LS_AGENCIES_KEY,JSON.stringify(arr));}
 const LS_TEACHER_META_KEY="hana_teacher_meta";
 function lsLoadTeacherMeta(){try{return JSON.parse(localStorage.getItem(LS_TEACHER_META_KEY)||"{}");}catch(e){return{};}}
 function lsSaveTeacherMeta(obj){localStorage.setItem(LS_TEACHER_META_KEY,JSON.stringify(obj));}
@@ -8523,7 +8545,7 @@ function Login({onLogin,kanbanCards,teacherMeta,passwords,agencies}){
     <div className="lw">
       <div className="lc">
         <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{fontSize:44,marginBottom:6}}>\ud83c\udf93</div>
+          <div style={{fontSize:44,marginBottom:6}}>🎓</div>
           <h1 style={{fontSize:24,fontWeight:800,color:"#1e3a8a"}}>Hana Academy</h1>
           <p style={{color:"#6b7280",fontSize:13,marginTop:4}}>Learning Management System</p>
         </div>
@@ -8551,15 +8573,15 @@ function App(){
       const wm=lsGetWeekMeta()||{weekStart:"2026-05-26",weekStatus:"active"};
       return{
         hist:[{
-          kanbanCards:(()=>{try{return lsLoadKanban()||[];}catch{return[];}}()),
-          sched:(()=>{try{return lsGetSched()||{};}catch{return{};}}()),
+          kanbanCards:(()=>{try{return lsLoadKanban()||[];}catch(e){return[];}})(),
+          sched:(()=>{try{return lsGetSched()||{};}catch(e){return{};}})(),
           weekStart:wm.weekStart||"2026-05-26",
           weekStatus:wm.weekStatus||"active",
-          rooms1on1:(()=>{try{return lsGetRooms1on1()||{};}catch{return{};}}()),
-          groupRosters:(()=>{try{return lsGetGroupRosters()||{};}catch{return{};}}()),
-          absentSets:(()=>{try{return lsGetAbsentSets()||{};}catch{return{};}}()),
-          subsByDay:(()=>{try{return lsGetSubsByDay()||{};}catch{return{};}}()),
-          cellData:(()=>{try{return lsGetCellData()||{};}catch{return{};}}()),
+          rooms1on1:(()=>{try{return lsGetRooms1on1()||{};}catch(e){return{};}})(),
+          groupRosters:(()=>{try{return lsGetGroupRosters()||{};}catch(e){return{};}})(),
+          absentSets:(()=>{try{return lsGetAbsentSets()||{};}catch(e){return{};}})(),
+          subsByDay:(()=>{try{return lsGetSubsByDay()||{};}catch(e){return{};}})(),
+          cellData:(()=>{try{return lsGetCellData()||{};}catch(e){return{};}})(),
         }],
         hIdx:0
       };
@@ -8575,9 +8597,9 @@ function App(){
   const[draftWeek,setDraftWeek]=React.useState(()=>{try{return lsGetDraft();}catch{return null;}});
   const[archives,setArchivesRaw]=React.useState(()=>{try{return lsGetArchives()||[];}catch{return[];}});
   const[passwords,setPasswords]=React.useState(()=>{try{return lsLoadPasswords();}catch{return{};}});
-  const[agencies,setAgenciesRaw]=React.useState(()=>{try{return lsLoadAgencies();}catch{return[];}});
-  const[agencyPipeline,setAgencyPipeline]=React.useState(lsLoadAgencyPipe);
-  const[teacherMeta,setTeacherMeta]=React.useState(lsLoadTeacherMeta);
+  const[agencies,setAgenciesRaw]=React.useState(()=>{try{return lsGetAgencies()||[];}catch{return[];}});
+  const[agencyPipeline,setAgencyPipeline]=React.useState(()=>{try{return lsLoadAgencyPipe()||[];}catch{return[];}});
+  const[teacherMeta,setTeacherMeta]=React.useState(()=>{try{return lsLoadTeacherMeta()||{};}catch{return{};}});
   const[viewMode,setViewMode]=React.useState("current");
   const[showArchiveMenu,setShowArchiveMenu]=React.useState(false);
   const[selDay,setSelDay]=React.useState(()=>{const d=new Date().getDay();return DAYS[Math.max(0,Math.min(d-1,4))]||"Monday";});
@@ -8683,6 +8705,66 @@ function App(){
     return()=>document.removeEventListener("mousedown",onDoc);
   },[showArchiveMenu]);
 
+  /* ── Archive core helper (MUST be before login gate — referenced by useEffect below) ── */
+  function _doArchiveCore(silent){
+    if(!silent&&!window.confirm("Archive "+weekRangeLabel(weekStart)+"?\nThis will permanently save it and cannot be undone."))return;
+    const absentSetsPlain={};
+    Object.entries(absentSets||{}).forEach(([day,s])=>{absentSetsPlain[day]=[...(s instanceof Set?s:[])];});
+    const archived={weekStart,weekEnd:addDaysISO(weekStart,4),label:weekRangeLabel(weekStart),archivedAt:new Date().toISOString(),sched:JSON.parse(JSON.stringify(sched)),cellData:JSON.parse(JSON.stringify(cellData)),rooms1on1:JSON.parse(JSON.stringify(rooms1on1)),groupRosters:JSON.parse(JSON.stringify(groupRosters)),absentSets:absentSetsPlain,subsByDay:JSON.parse(JSON.stringify(subsByDay))};
+    setArchives(prev=>[...prev,archived]);
+    if(draftWeek){
+      pushSnap({sched:JSON.parse(JSON.stringify(draftWeek.sched||{})),cellData:JSON.parse(JSON.stringify(draftWeek.cellData||{})),rooms1on1:JSON.parse(JSON.stringify(draftWeek.rooms1on1||{})),groupRosters:JSON.parse(JSON.stringify(draftWeek.groupRosters||{})),weekStart:draftWeek.weekStart,weekStatus:"active"});
+      setDraftWeek(null);
+    }else{
+      pushSnap({sched:{},weekStart:addDaysISO(weekStart,7),weekStatus:"active"});
+    }
+    setViewMode("current");
+  }
+  /* ── Auto-archive on weekend if confirmed (MUST be before login gate — hooks order) ── */
+  React.useEffect(()=>{
+    if(!user)return;
+    const dow=new Date().getDay();
+    if((dow===6||dow===0)&&weekStatus==="confirmed"&&viewMode==="current")_doArchiveCore(true);
+  },[user]);
+
+  /* ── Computed student/teacher data (MUST be before login gate — hooks order) ── */
+  const activeStudents=React.useMemo(()=>{
+    const statuses=isDraftView?["current","incoming"]:["current","leaving","incoming"];
+    const names=(kanbanCards||[]).filter(c=>statuses.includes(c.status)).flatMap(c=>(c.members||[]).map(m=>m.name).filter(Boolean));
+    return[...new Set(names)];
+  },[kanbanCards,isDraftView]);
+  STUDENTS=activeStudents.length?activeStudents:STUDENTS_INITIAL;
+
+  const studentCourses=React.useMemo(()=>{
+    const map={};
+    (kanbanCards||[]).forEach(card=>{
+      (card.members||[]).forEach(m=>{if(m.name)map[m.name]={type:card.type||card.cardType||"Individual",groupName:card.name||""};});
+    });
+    return map;
+  },[kanbanCards]);
+
+  const mergedStudentData=React.useMemo(()=>{
+    const map={};
+    (kanbanCards||[]).forEach(card=>{
+      (card.members||[]).forEach(m=>{
+        if(m.name)map[m.name]={...m,cardId:card.id,cardType:card.type||card.cardType||"Individual",status:card.status,groupName:card.name||""};
+      });
+    });
+    return map;
+  },[kanbanCards]);
+
+  const allCardsForDorm=React.useMemo(()=>{
+    const ghosts=[];
+    (agencyPipeline||[]).forEach(entry=>{
+      if(!entry.kanbanCardId){
+        (entry.members||[]).filter(m=>(m.roomNumber||m.roomType?.startsWith("Hevea Hotel")||m.roomType?.startsWith("Clover Hotel"))&&(m.studyStart||entry.studyStart)&&(m.studyEnd||entry.studyEnd))
+          .forEach((m,mi)=>{ghosts.push({id:"ghost_"+entry.id+"_m"+mi,type:entry.cardType||"Individual",status:"current",
+            members:[{name:m.name||"(Pending)",nationality:m.nationality||"",studyStart:m.studyStart||entry.studyStart,studyEnd:m.studyEnd||entry.studyEnd,roomNumber:m.roomNumber,roomType:m.roomType||"",roomHistory:[]}],_isGhost:true});});
+      }
+    });
+    return[...(kanbanCards||[]),...ghosts];
+  },[kanbanCards,agencyPipeline]);
+
   /* ── LOGIN GATE (all hooks must be above this) ── */
   if(!user)return<Login onLogin={setUser} kanbanCards={kanbanCards} teacherMeta={teacherMeta} passwords={passwords} agencies={agencies}/>;
 
@@ -8723,44 +8805,6 @@ function App(){
     }else{setRooms1on1(fn);}
   }
 
-  /* ── Computed student/teacher data ── */
-  const activeStudents=React.useMemo(()=>{
-    const statuses=isDraftView?["current","incoming"]:["current","leaving","incoming"];
-    const names=(kanbanCards||[]).filter(c=>statuses.includes(c.status)).flatMap(c=>(c.members||[]).map(m=>m.name).filter(Boolean));
-    return[...new Set(names)];
-  },[kanbanCards,isDraftView]);
-  STUDENTS=activeStudents.length?activeStudents:STUDENTS_INITIAL;
-
-  const studentCourses=React.useMemo(()=>{
-    const map={};
-    (kanbanCards||[]).forEach(card=>{
-      (card.members||[]).forEach(m=>{if(m.name)map[m.name]={type:card.type||card.cardType||"Individual",groupName:card.name||""};});
-    });
-    return map;
-  },[kanbanCards]);
-
-  const mergedStudentData=React.useMemo(()=>{
-    const map={};
-    (kanbanCards||[]).forEach(card=>{
-      (card.members||[]).forEach(m=>{
-        if(m.name)map[m.name]={...m,cardId:card.id,cardType:card.type||card.cardType||"Individual",status:card.status,groupName:card.name||""};
-      });
-    });
-    return map;
-  },[kanbanCards]);
-
-  const allCardsForDorm=React.useMemo(()=>{
-    const ghosts=[];
-    (agencyPipeline||[]).forEach(entry=>{
-      if(!entry.kanbanCardId){
-        (entry.members||[]).filter(m=>(m.roomNumber||m.roomType?.startsWith("Hevea Hotel")||m.roomType?.startsWith("Clover Hotel"))&&(m.studyStart||entry.studyStart)&&(m.studyEnd||entry.studyEnd))
-          .forEach((m,mi)=>{ghosts.push({id:"ghost_"+entry.id+"_m"+mi,type:entry.cardType||"Individual",status:"current",
-            members:[{name:m.name||"(Pending)",nationality:m.nationality||"",studyStart:m.studyStart||entry.studyStart,studyEnd:m.studyEnd||entry.studyEnd,roomNumber:m.roomNumber,roomType:m.roomType||"",roomHistory:[]}],_isGhost:true});});
-      }
-    });
-    return[...(kanbanCards||[]),...ghosts];
-  },[kanbanCards,agencyPipeline]);
-
   /* ── Workflow actions ── */
   function doConfirmWeek(){pushSnap({weekStatus:"confirmed"});}
   function doCreateDraft(){
@@ -8780,32 +8824,12 @@ function App(){
     setViewMode("draft");
   }
   function doConfirmDraft(){if(!draftWeek)return;setDraftWeek(prev=>({...prev,status:"confirmed"}));}
-  function _doArchiveCore(silent){
-    if(!silent&&!window.confirm("Archive "+weekRangeLabel(weekStart)+"?\nThis will permanently save it and cannot be undone."))return;
-    const absentSetsPlain={};
-    Object.entries(absentSets||{}).forEach(([day,s])=>{absentSetsPlain[day]=[...(s instanceof Set?s:[])];});
-    const archived={weekStart,weekEnd:addDaysISO(weekStart,4),label:weekRangeLabel(weekStart),archivedAt:new Date().toISOString(),sched:JSON.parse(JSON.stringify(sched)),cellData:JSON.parse(JSON.stringify(cellData)),rooms1on1:JSON.parse(JSON.stringify(rooms1on1)),groupRosters:JSON.parse(JSON.stringify(groupRosters)),absentSets:absentSetsPlain,subsByDay:JSON.parse(JSON.stringify(subsByDay))};
-    setArchives(prev=>[...prev,archived]);
-    if(draftWeek){
-      pushSnap({sched:JSON.parse(JSON.stringify(draftWeek.sched||{})),cellData:JSON.parse(JSON.stringify(draftWeek.cellData||{})),rooms1on1:JSON.parse(JSON.stringify(draftWeek.rooms1on1||{})),groupRosters:JSON.parse(JSON.stringify(draftWeek.groupRosters||{})),weekStart:draftWeek.weekStart,weekStatus:"active"});
-      setDraftWeek(null);
-    }else{
-      pushSnap({sched:{},weekStart:addDaysISO(weekStart,7),weekStatus:"active"});
-    }
-    setViewMode("current");
-  }
   function doArchiveAndAdvance(){_doArchiveCore(false);}
   function doClearSched(){
     if(!window.confirm("Clear ALL assignments from this schedule?"))return;
     if(isDraftView)setDraftWeek(prev=>({...prev,sched:{}}));
     else pushSnap({sched:{}});
   }
-
-  /* ── Auto-archive on weekend if confirmed ── */
-  React.useEffect(()=>{
-    const dow=new Date().getDay();
-    if((dow===6||dow===0)&&weekStatus==="confirmed"&&viewMode==="current")_doArchiveCore(true);
-  },[]);
 
   /* ── Messaging ── */
   function convKey(a,b){return[a,b].sort().join("||");}
@@ -9124,26 +9148,46 @@ class ErrorBoundary extends React.Component {
       const msg=String(this.state.err);
       const stack=this.state.stack||"";
       const cstack=this.state.info?.componentStack||"";
+      /* Extract first few lines of JS stack for quick diagnosis */
+      const stackLines=stack.split("\n").slice(0,8).join("\n");
+      /* Copy to clipboard helper */
+      const copyAll=()=>{
+        const txt=`ERROR: ${msg}\n\nJS STACK:\n${stack}\n\nCOMPONENT STACK:\n${cstack}`;
+        navigator.clipboard?.writeText(txt).catch(()=>{});
+      };
       return(
         <div style={{padding:24,fontFamily:"monospace",background:"#fff1f2",minHeight:"100vh"}}>
-          <div style={{maxWidth:860,margin:"0 auto",background:"white",borderRadius:12,padding:28,boxShadow:"0 4px 32px rgba(220,38,38,.18)",border:"2.5px solid #dc2626"}}>
+          <div style={{maxWidth:900,margin:"0 auto",background:"white",borderRadius:12,padding:28,boxShadow:"0 4px 32px rgba(220,38,38,.18)",border:"2.5px solid #dc2626"}}>
             <h2 style={{color:"#dc2626",marginBottom:8,fontSize:20,fontWeight:800}}>⚠️ Hana LMS — Runtime Error</h2>
-            <p style={{color:"#6b7280",fontSize:12,marginBottom:16}}>아래 에러 내용을 개발자에게 전달해 주세요.</p>
-            <div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:6,padding:12,marginBottom:12}}>
-              <div style={{color:"#991b1b",fontWeight:700,fontSize:13,marginBottom:4}}>Error Message</div>
-              <div style={{color:"#dc2626",fontSize:13,wordBreak:"break-all"}}>{msg}</div>
+            <p style={{color:"#6b7280",fontSize:12,marginBottom:12}}>아래 전체 내용을 개발자에게 복사하여 전달해 주세요.</p>
+            {/* Error message — always visible */}
+            <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:6,padding:"10px 14px",marginBottom:10}}>
+              <div style={{color:"#991b1b",fontWeight:800,fontSize:13,marginBottom:3}}>🔴 Error Message</div>
+              <div style={{color:"#dc2626",fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{msg}</div>
             </div>
-            {stack&&<details open style={{marginBottom:10}}>
-              <summary style={{cursor:"pointer",color:"#374151",fontSize:12,fontWeight:600,marginBottom:4}}>Stack Trace</summary>
-              <pre style={{background:"#f8fafc",padding:10,borderRadius:5,fontSize:11,overflow:"auto",maxHeight:220,color:"#1e293b",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{stack}</pre>
+            {/* JS Stack — first 8 lines always open for easy copy */}
+            {stack&&(
+              <div style={{marginBottom:10}}>
+                <div style={{color:"#374151",fontSize:12,fontWeight:700,marginBottom:4}}>📍 JS Stack Trace (first 8 lines)</div>
+                <pre style={{background:"#0f172a",color:"#f8fafc",padding:12,borderRadius:6,fontSize:11,overflow:"auto",maxHeight:180,whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0,lineHeight:1.6}}>{stackLines}</pre>
+              </div>
+            )}
+            {/* Component Stack — always open */}
+            {cstack&&(
+              <div style={{marginBottom:10}}>
+                <div style={{color:"#374151",fontSize:12,fontWeight:700,marginBottom:4}}>🧩 Component Stack</div>
+                <pre style={{background:"#f8fafc",padding:10,borderRadius:5,fontSize:11,overflow:"auto",maxHeight:160,color:"#64748b",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0,lineHeight:1.5}}>{cstack}</pre>
+              </div>
+            )}
+            {/* Full stack collapsed */}
+            {stack&&<details style={{marginBottom:14}}>
+              <summary style={{cursor:"pointer",color:"#6b7280",fontSize:11,fontWeight:600}}>▸ Full JS Stack</summary>
+              <pre style={{background:"#f8fafc",padding:10,borderRadius:5,fontSize:10,overflow:"auto",maxHeight:200,color:"#475569",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:"4px 0 0"}}>{stack}</pre>
             </details>}
-            {cstack&&<details style={{marginBottom:10}}>
-              <summary style={{cursor:"pointer",color:"#374151",fontSize:12,fontWeight:600,marginBottom:4}}>Component Stack</summary>
-              <pre style={{background:"#f8fafc",padding:10,borderRadius:5,fontSize:11,overflow:"auto",maxHeight:180,color:"#64748b",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{cstack}</pre>
-            </details>}
-            <div style={{display:"flex",gap:10,marginTop:16}}>
-              <button onClick={()=>this.setState({err:null,info:null,stack:null})} style={{padding:"8px 20px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>🔄 Retry</button>
-              <button onClick={()=>window.location.reload()} style={{padding:"8px 20px",background:"#f1f5f9",color:"#374151",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>↺ Reload Page</button>
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              <button onClick={copyAll} style={{padding:"8px 18px",background:"#1e40af",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>📋 Copy Error Report</button>
+              <button onClick={()=>this.setState({err:null,info:null,stack:null})} style={{padding:"8px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>🔄 Retry</button>
+              <button onClick={()=>window.location.reload()} style={{padding:"8px 18px",background:"#f1f5f9",color:"#374151",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>↺ Reload</button>
             </div>
           </div>
         </div>
@@ -9152,6 +9196,16 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+
+/* ── Global error logger (catches non-React errors) ── */
+window.addEventListener("error",function(e){
+  const div=document.getElementById("global-err");
+  if(div){div.style.display="block";div.querySelector("pre").textContent=(e.message||"Unknown")+"\n"+(e.error?.stack||"");}
+});
+window.addEventListener("unhandledrejection",function(e){
+  const div=document.getElementById("global-err");
+  if(div){div.style.display="block";div.querySelector("pre").textContent="Unhandled Promise: "+(e.reason?.message||e.reason)+"\n"+(e.reason?.stack||"");}
+});
 
 /* ── Mount ── */
 (async function(){
@@ -9182,14 +9236,5 @@ class ErrorBoundary extends React.Component {
 })();
 </script>
 
-<script>
-/* pan-to-scroll on mobile */
-(function(){
-  let startX=0,startY=0,isPan=false;
-  document.addEventListener("touchstart",e=>{if(e.touches.length===1){startX=e.touches[0].clientX;startY=e.touches[0].clientY;isPan=true;}},{passive:true});
-  document.addEventListener("touchmove",e=>{if(!isPan||e.touches.length!==1)return;},{passive:true});
-  document.addEventListener("touchend",()=>{isPan=false;},{passive:true});
-})();
-</script>
 </body>
 </html>
