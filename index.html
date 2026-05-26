@@ -492,7 +492,7 @@ const FAMILY_ROOM_SET=new Set(["101","102","201","202","301","302"]);
 /* Color palette for dormitory Gantt bars */
 const DORM_PALETTE=["#60a5fa","#34d399","#f87171","#fbbf24","#a78bfa","#fb923c","#38bdf8","#4ade80","#f472b6","#facc15","#818cf8","#2dd4bf","#f97316","#06b6d4","#8b5cf6","#10b981"];
 /* Card types that represent a family enrollment group */
-const FAMILY_CARD_TYPES=new Set(["Family","Family Card"]);
+const FAMILY_CARD_TYPES=new Set(["Group/Family"]);
 /* Return numeric capacity for a given room-type string */
 function roomCapacity(roomType){
   if(!roomType)return 1;
@@ -3033,15 +3033,18 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
       }
       if(isFamilyCard){
         const _cardMem=card.members||[];
-        const rep=_cardMem[0]||{};
+        /* prefer explicitly marked guardian; fall back to first member */
+        const rep=_cardMem.find(m=>m.isGuardian)||_cardMem[0]||{};
         const nat=rep.nationality||"";
         const natCode=NAT_CODE[nat]||nat.slice(0,2).toUpperCase()||"";
         const repName=(rep.name||"?");
         const extra=_cardMem.length-1;
-        const label=repName+(extra>0?"+"+extra:"")+(natCode?"("+natCode+")":"");
+        /* "KANG MOCHUL +2" style label */
+        const label=repName+(extra>0?" +"+extra:"")+(natCode?" ("+natCode+")":"");
+        const cardLink=card.trelloUrl||card.link||"";
         const segs=getEffectiveRoomSegments(rep);
         if(segs.length>0){
-          segs.forEach((seg,si2)=>pushBar(seg.roomNumber,seg.from,seg.to,label,card.id+"_fam_"+seg.roomNumber+"_s"+si2,{cardId:card.id,isFamily:true,roomType:rep.roomType||""}));
+          segs.forEach((seg,si2)=>pushBar(seg.roomNumber,seg.from,seg.to,label,card.id+"_fam_"+seg.roomNumber+"_s"+si2,{cardId:card.id,isFamily:true,roomType:rep.roomType||"",cardLink}));
         } else {
           const byRoom={};
           (card.members||[]).forEach(m=>{
@@ -3052,7 +3055,7 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
           });
           Object.entries(byRoom).forEach(([rn,{starts,ends,roomType}])=>{
             const startStr=[...starts].sort()[0];const endStr=[...ends].sort().slice(-1)[0];
-            pushBar(rn,startStr,endStr,label,card.id+"_fam_"+rn,{cardId:card.id,isFamily:true,roomType});
+            pushBar(rn,startStr,endStr,label,card.id+"_fam_"+rn,{cardId:card.id,isFamily:true,roomType,cardLink});
           });
         }
       } else {
@@ -3060,10 +3063,11 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
           if(!m.studyStart||!m.studyEnd)return;
           const nat=m.nationality||"";
           const natCode=NAT_CODE[nat]||nat.slice(0,2).toUpperCase()||"";
-          const label=(m.name||"?")+(natCode?"("+natCode+")":"");
+          const label=(m.name||"?")+(natCode?" ("+natCode+")":"");
+          const cardLink=card.trelloUrl||card.link||"";
           const segs=getEffectiveRoomSegments(m);
           segs.forEach((seg,si2)=>pushBar(seg.roomNumber,seg.from,seg.to,label,
-            card.id+"_m"+mi+"_"+seg.roomNumber+"_s"+si2,{cardId:card.id,memberId:mi,isFamily:false,roomType:m.roomType||""}));
+            card.id+"_m"+mi+"_"+seg.roomNumber+"_s"+si2,{cardId:card.id,memberId:mi,isFamily:false,roomType:m.roomType||"",cardLink}));
         });
       }
     });
@@ -3199,18 +3203,20 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
                               const bw=(bar.endWeekIdx-bar.startWeekIdx+1)*COL_W-3;
                               const y=ROOM_PAD+bar._lane*LANE_H+2;
                               const isGhost=_ghostIds.has(bar.cardId);
+                              const hasLink=!!(bar.cardLink);
                               return(
                                 <div key={bar.barKey}
-                                  title={(isGhost?"[임시 배정] ":"")+bar.label+"\n"+fmtDate(bar.startDateStr)+" → "+fmtDate(bar.endDateStr)}
+                                  title={(isGhost?"[임시 배정] ":"")+bar.label+"\n"+fmtDate(bar.startDateStr)+" → "+fmtDate(bar.endDateStr)+(hasLink?"\n🔗 클릭하여 카드 열기":"")}
+                                  onClick={()=>{if(hasLink)window.open(bar.cardLink,"_blank","noopener");else alert("이 카드에 연결된 링크가 없습니다.\n카드 편집 화면에서 Link 필드를 입력하세요.");}}
                                   style={{position:"absolute",left:x,top:y,width:Math.max(bw,6),height:LANE_H-5,
                                     background:isGhost?"repeating-linear-gradient(45deg,"+bc+","+bc+" 4px,rgba(255,255,255,.7) 4px,rgba(255,255,255,.7) 8px)":bc,
                                     border:isGhost?"1.5px dashed rgba(0,0,0,.35)":"1.5px solid rgba(0,0,0,.14)",
-                                    borderRadius:4,cursor:"default",zIndex:3,
+                                    borderRadius:4,cursor:hasLink?"pointer":"default",zIndex:3,
                                     display:"flex",alignItems:"center",padding:"0 5px",overflow:"hidden",
                                     opacity:isGhost?0.55:1,
                                     boxShadow:isGhost?"none":"0 1px 3px rgba(0,0,0,.08)"}}>
                                   <span style={{fontSize:9,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                                    {isGhost?"⋯ ":""}{bar.label}
+                                    {isGhost?"⋯ ":""}{hasLink?"🔗 ":""}{bar.label}
                                   </span>
                                 </div>
                               );
@@ -3457,6 +3463,7 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
     :[{...BLANK}];
   const[members,setMembers]=useState(initMembers);
   const[notes,setNotes]=useState(initialCard?.notes||"");
+  const[cardLink,setCardLink]=useState(initialCard?.trelloUrl||initialCard?.link||"");
   const[agencyNat,setAgencyNat]=useState(initialCard?.agencyNat||"");
   const[agencyName,setAgencyName]=useState(initialCard?.agencyName||"");
   const[consultant,setConsultant]=useState(initialCard?.consultant||"");
@@ -3587,7 +3594,7 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
       :(initialCard?.agencyId||"");
     onSave({
       id:initialCard?.id||"card_"+Date.now()+"_"+Math.random().toString(36).slice(2,6),
-      type,status,notes,attachments,
+      type,status,notes,attachments,trelloUrl:cardLink.trim(),
       agencyNat:agencyNat||"",agencyName:agencyName||"",consultant:consultant||"",
       agencyId:computedAgencyId||initialCard?.agencyId||"",
       members:(type==="Group/Family"?sortByAge(members):members).map(m=>({...m,name:m.name.trim()})),
@@ -3713,6 +3720,24 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
             onFocus={e=>e.target.style.borderColor="#3b82f6"}
             onBlur={e=>e.target.style.borderColor="#e2e8f0"}
           />
+        </div>
+
+        {/* External Link (Trello / Google Drive / etc.) */}
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",marginBottom:5}}>🔗 External Link (Trello / Google Drive…)</div>
+          <input
+            type="url"
+            value={cardLink}
+            onChange={e=>setCardLink(e.target.value)}
+            placeholder="https://trello.com/c/..."
+            style={{width:"100%",padding:"8px 10px",border:"1.5px solid #e2e8f0",borderRadius:7,fontSize:12,
+              outline:"none",fontFamily:"inherit",boxSizing:"border-box",color:"#374151"}}
+            onFocus={e=>e.target.style.borderColor="#3b82f6"}
+            onBlur={e=>e.target.style.borderColor="#e2e8f0"}
+          />
+          {cardLink&&<div style={{marginTop:4,fontSize:10,color:"#6366f1"}}>
+            🔗 <a href={cardLink} target="_blank" rel="noopener noreferrer" style={{color:"#6366f1"}}>{cardLink}</a>
+          </div>}
         </div>
 
         {/* File Attachments */}
@@ -9275,7 +9300,6 @@ class ErrorBoundary extends React.Component {
                 <pre style={{margin:0,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:4,padding:"8px 10px",fontSize:10,overflowX:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all",color:"#374151"}}>{stackLines}</pre>
               </details>
             )}
-            {/* Full Component Stack */}
             {cstack&&(
               <details style={{marginBottom:10}}>
                 <summary style={{cursor:"pointer",fontWeight:700,fontSize:11,color:"#6b7280",marginBottom:4}}>Component Stack</summary>
