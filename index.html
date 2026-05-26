@@ -2990,6 +2990,8 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
   /* ghostCardIds: Set of card IDs that are tentative (from pipeline) — rendered faintly */
   const _ghostIds=ghostCardIds||new Set();
   const scrollRef=React.useRef(null);
+  /* drag-to-scroll state — plain ref to avoid re-renders on every mousemove */
+  const dragRef=React.useRef({active:false,startX:0,startScroll:0,moved:false});
   const today=new Date();today.setHours(0,0,0,0);
   const MS_WEEK=7*24*60*60*1000;
   const NUM_WEEKS=72;
@@ -3127,6 +3129,29 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
 
   function fmtDate(s){if(!s)return"";const d=new Date(s+"T00:00:00");return(d.getMonth()+1)+"/"+d.getDate();}
 
+  /* ── Drag-to-scroll handlers ── */
+  function onScrollMouseDown(e){
+    if(e.button!==0)return;
+    const el=scrollRef.current;if(!el)return;
+    dragRef.current={active:true,startX:e.clientX,startScroll:el.scrollLeft,moved:false};
+    el.style.cursor="grabbing";
+    e.preventDefault(); /* prevent text selection */
+  }
+  function onScrollMouseMove(e){
+    const dr=dragRef.current;if(!dr.active)return;
+    const dx=e.clientX-dr.startX;
+    if(Math.abs(dx)>4)dr.moved=true;
+    if(dr.moved&&scrollRef.current)scrollRef.current.scrollLeft=dr.startScroll-dx;
+  }
+  function onScrollMouseUp(){
+    dragRef.current.active=false;
+    if(scrollRef.current)scrollRef.current.style.cursor="grab";
+  }
+  function onScrollMouseLeave(){
+    dragRef.current.active=false;
+    if(scrollRef.current)scrollRef.current.style.cursor="grab";
+  }
+
   const targetNum=parseInt(targetRoom)||0;
 
   return(
@@ -3141,8 +3166,13 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
           </div>
           <button onClick={onClose} style={{background:"#f1f5f9",border:"1.5px solid #e2e8f0",borderRadius:8,cursor:"pointer",fontSize:16,color:"#6b7280",width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>✕</button>
         </div>
-        {/* Chart */}
-        <div ref={scrollRef} style={{overflow:"auto",flex:1}}>
+        {/* Chart — drag-to-scroll enabled on empty space */}
+        <div ref={scrollRef}
+          onMouseDown={onScrollMouseDown}
+          onMouseMove={onScrollMouseMove}
+          onMouseUp={onScrollMouseUp}
+          onMouseLeave={onScrollMouseLeave}
+          style={{overflow:"auto",flex:1,cursor:"grab",userSelect:"none"}}>
           <div style={{display:"inline-block",minWidth:LABEL_W+NUM_WEEKS*COL_W}}>
             {/* Month header */}
             <div style={{display:"flex",background:"#1e3a8a",color:"white",position:"sticky",top:0,zIndex:20}}>
@@ -3207,11 +3237,16 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
                               return(
                                 <div key={bar.barKey}
                                   title={(isGhost?"[임시 배정] ":"")+bar.label+"\n"+fmtDate(bar.startDateStr)+" → "+fmtDate(bar.endDateStr)+(hasLink?"\n🔗 클릭하여 카드 열기":"")}
-                                  onClick={()=>{if(hasLink)window.open(bar.cardLink,"_blank","noopener");else alert("이 카드에 연결된 링크가 없습니다.\n카드 편집 화면에서 Link 필드를 입력하세요.");}}
+                                  onClick={(e)=>{
+                                    /* if the mouse moved during drag, treat as scroll — not a click */
+                                    if(dragRef.current.moved){e.stopPropagation();return;}
+                                    if(hasLink)window.open(bar.cardLink,"_blank","noopener");
+                                    else alert("이 카드에 연결된 링크가 없습니다.\n카드 편집 화면에서 🔗 External Link 필드를 입력하세요.");
+                                  }}
                                   style={{position:"absolute",left:x,top:y,width:Math.max(bw,6),height:LANE_H-5,
                                     background:isGhost?"repeating-linear-gradient(45deg,"+bc+","+bc+" 4px,rgba(255,255,255,.7) 4px,rgba(255,255,255,.7) 8px)":bc,
                                     border:isGhost?"1.5px dashed rgba(0,0,0,.35)":"1.5px solid rgba(0,0,0,.14)",
-                                    borderRadius:4,cursor:hasLink?"pointer":"default",zIndex:3,
+                                    borderRadius:4,cursor:hasLink?"pointer":"grab",zIndex:3,
                                     display:"flex",alignItems:"center",padding:"0 5px",overflow:"hidden",
                                     opacity:isGhost?0.55:1,
                                     boxShadow:isGhost?"none":"0 1px 3px rgba(0,0,0,.08)"}}>
