@@ -7737,25 +7737,44 @@ ${driverPhotoHTML}
               </div>
               {pickupConfirmed?(
                 <div>
-                  <div style={{background:"white",border:"1.5px solid #fed7aa",borderRadius:8,overflow:"hidden",fontFamily:"Arial,sans-serif",fontSize:12}}>
-              {isAdmin&&(
-                <div style={{marginBottom:10}}>
-                  <div style={LBL}>🏨 Room Number <span style={{color:"#94a3b8",fontWeight:400,fontSize:10}}>(tentative — optional)</span></div>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <input style={{...INP,width:90}} type="number" min="1"
-                      value={m.roomNumber||""}
-                      onChange={ev=>updMember(i,{...m,roomNumber:ev.target.value})}
-                      placeholder="e.g. 101"/>
-                    <button onClick={()=>{
-                        const rt=m.roomType||"";
-                        const hotelVirt=rt.startsWith("Hevea Hotel")?9901:rt.startsWith("Clover Hotel")?9902:null;
-                          <tr><td style={{border:"1px solid #fed7aa",padding:"8px 12px",fontWeight:700,color:"#7c2d12",width:"45%",fontSize:11}}>Flight / Date / Time / Airport</td><td style={{border:"1px solid #fed7aa",padding:"8px 12px",fontSize:12}}>{fl.flightNumber||"___"} / {dateDisp} {fl.arrivalTime||""} / {AIRPORTS[fl.airport]||fl.airport||""}</td></tr>
-                          <tr><td style={{border:"1px solid #fed7aa",padding:"8px 12px",fontWeight:700,color:"#7c2d12",fontSize:11}}>Name(s)</td><td style={{border:"1px solid #fed7aa",padding:"8px 12px",fontSize:12}}>{disp}</td></tr>
-                          <tr><td colSpan={2} style={{border:"1px solid #fed7aa",padding:"8px 12px",background:"#ffff00",fontWeight:700,textAlign:"center",fontSize:12}}>Welcome To HANA Academy<br/>Contact : 0926 727 4196 (Mr Bryan,Ko) &nbsp;&nbsp; 0966 633 8642 (Driver, Joel)</td></tr>
-                        </tbody>
-                      </table>);
+                  <div style={{background:"white",border:"1.5px solid #fed7aa",borderRadius:8,overflow:"hidden",marginBottom:10}}>
+                    {(()=>{
+                      const fl2=draft.flightInfo||{};
+                      const names2=draft.members.map(mb=>mb.name||"").filter(Boolean);
+                      const disp2=(names2[0]||"")+(names2.length>1?`+${names2.length-1}`:"");
+                      const AIRPORTS2={"Clark":"Clark Airport (CRK)","Manila1":"NAIA Terminal 1","Manila2":"NAIA Terminal 2","Manila3":"NAIA Terminal 3"};
+                      const WDAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+                      let dateDisp2=fl2.arrivalDate||"";
+                      if(fl2.arrivalDate){const d2=new Date(fl2.arrivalDate+"T00:00:00");dateDisp2=`${fl2.arrivalDate} (${WDAYS[d2.getDay()]})`;}
+                      return(
+                        <table style={{borderCollapse:"collapse",width:"100%",fontFamily:"Arial,sans-serif",fontSize:12}}>
+                          <tbody>
+                            <tr><td style={{border:"1px solid #fed7aa",padding:"8px 12px",fontWeight:700,color:"#7c2d12",width:"45%",fontSize:11}}>Flight / Date / Time / Airport</td><td style={{border:"1px solid #fed7aa",padding:"8px 12px",fontSize:12}}>{fl2.flightNumber||"___"} / {dateDisp2} {fl2.arrivalTime||""} / {AIRPORTS2[fl2.airport]||fl2.airport||""}</td></tr>
+                            <tr><td style={{border:"1px solid #fed7aa",padding:"8px 12px",fontWeight:700,color:"#7c2d12",fontSize:11}}>Name(s)</td><td style={{border:"1px solid #fed7aa",padding:"8px 12px",fontSize:12}}>{disp2}</td></tr>
+                            <tr><td colSpan={2} style={{border:"1px solid #fed7aa",padding:"8px 12px",background:"#ffff00",fontWeight:700,textAlign:"center",fontSize:12}}>Welcome To HANA Academy<br/>Contact : 0926 727 4196 (Mr Bryan,Ko) &nbsp;&nbsp; 0966 633 8642 (Driver, Joel)</td></tr>
+                          </tbody>
+                        </table>
+                      );
                     })()}
                   </div>
+                  {isAdmin&&(
+                    <div style={{marginBottom:10}}>
+                      <div style={LBL}>🏨 Room Number <span style={{color:"#94a3b8",fontWeight:400,fontSize:10}}>(tentative — optional)</span></div>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <input style={{...INP,width:90}} type="number" min="1"
+                          value={draft.members[0]?.roomNumber||""}
+                          onChange={ev=>updMember(0,{...draft.members[0],roomNumber:ev.target.value})}
+                          placeholder="e.g. 101"/>
+                        <button onClick={()=>{
+                            const rt=draft.members[0]?.roomType||"";
+                            const hotelVirt=rt.startsWith("Hevea Hotel")?9901:rt.startsWith("Clover Hotel")?9902:null;
+                            setDormSheetRoom(hotelVirt||parseInt(draft.members[0]?.roomNumber)||null);
+                          }} style={{...B,background:"#e0f2fe",color:"#0369a1",fontSize:11}}>
+                          🏠 View Room
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,padding:"8px 12px",background:"#fff7ed",borderRadius:8,border:"1.5px solid #fed7aa"}}>
                     <span style={{fontSize:16}}>✅</span>
                     <div>
@@ -9136,22 +9155,16 @@ class ErrorBoundary extends React.Component {
 
 /* ── Mount ── */
 (async function(){
-  /* Fix 1: loadFromSupabase failure NEVER blocks rendering.
-     On network error / missing table, we fall back to localStorage data. */
-  try{
-    await loadFromSupabase();
-  }catch(e){
-    console.error("Supabase load failed — rendering with local data:",e);
+  try {
+    /* 5초 안에 Supabase 로드가 안 되면 타임아웃 처리하고 로컬 모드로 진입 */
+    await Promise.race([
+      loadFromSupabase(),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error('Supabase load timeout (5s)')),5000))
+    ]);
+  } catch(err) {
+    console.error("Supabase 초기 데이터 로드 실패, 로컬 모드로 진입합니다:", err);
   }
-  /* Fix 3: Catch synchronous JS errors and display them via ErrorBoundary-style panel */
-  window.addEventListener("error",function(ev){
-    var el=document.getElementById("__global_err__");
-    if(!el){el=document.createElement("div");el.id="__global_err__";el.style.cssText="position:fixed;top:0;left:0;right:0;z-index:99999;background:#fff1f2;border-bottom:3px solid #dc2626;padding:16px 24px;font-family:monospace;font-size:12px;";document.body.prepend(el);}
-    el.innerHTML="<b style='color:#dc2626'>⚠️ JS Error: "+String(ev.message)+"</b><br><span style='color:#6b7280'>"+String(ev.filename)+" line "+ev.lineno+"</span><br><pre style='max-height:120px;overflow:auto;margin:8px 0 0;color:#374151'>"+String(ev.error?.stack||"")+"</pre><button onclick='this.parentNode.remove()' style='margin-top:8px;padding:4px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer'>✕ Close</button>";
-  });
-  window.addEventListener("unhandledrejection",function(ev){
-    console.error("Unhandled promise rejection:",ev.reason);
-  });
+  /* 로딩 성공 여부와 상관없이 무조건 렌더링 실행 */
   ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
 })();
 </script>
@@ -9179,4 +9192,4 @@ class ErrorBoundary extends React.Component {
 })();
 </script>
 </body>
-<
+</html>
