@@ -8142,31 +8142,38 @@ function App(){
   const[user,setUser]=React.useState(null);
 
   /* ── Core scheduling state (hist-based undo/redo) ── */
+  /* Fix 2: every lsGet call is individually guarded so a corrupt localStorage
+     key never prevents the login screen from appearing. */
   const[hist,setHist]=React.useState(()=>{
-    const wm=lsGetWeekMeta();
-    return{
-      hist:[{
-        kanbanCards:lsLoadKanban(),
-        sched:lsGetSched()||{},
-        weekStart:wm.weekStart,
-        weekStatus:wm.weekStatus||"active",
-        rooms1on1:lsGetRooms1on1()||{},
-        groupRosters:lsGetGroupRosters()||{},
-        absentSets:lsGetAbsentSets()||{},
-        subsByDay:lsGetSubsByDay()||{},
-        cellData:lsGetCellData()||{},
-      }],
-      hIdx:0
-    };
+    try{
+      const wm=lsGetWeekMeta()||{weekStart:"2026-05-26",weekStatus:"active"};
+      return{
+        hist:[{
+          kanbanCards:(()=>{try{return lsLoadKanban()||[];}catch{return[];}}()),
+          sched:(()=>{try{return lsGetSched()||{};}catch{return{};}}()),
+          weekStart:wm.weekStart||"2026-05-26",
+          weekStatus:wm.weekStatus||"active",
+          rooms1on1:(()=>{try{return lsGetRooms1on1()||{};}catch{return{};}}()),
+          groupRosters:(()=>{try{return lsGetGroupRosters()||{};}catch{return{};}}()),
+          absentSets:(()=>{try{return lsGetAbsentSets()||{};}catch{return{};}}()),
+          subsByDay:(()=>{try{return lsGetSubsByDay()||{};}catch{return{};}}()),
+          cellData:(()=>{try{return lsGetCellData()||{};}catch{return{};}}()),
+        }],
+        hIdx:0
+      };
+    }catch(e){
+      console.error("Failed to load local state, using empty defaults:",e);
+      return{hist:[{kanbanCards:[],sched:{},weekStart:"2026-05-26",weekStatus:"active",rooms1on1:{},groupRosters:{},absentSets:{},subsByDay:{},cellData:{}}],hIdx:0};
+    }
   });
   const{kanbanCards,sched,rooms1on1,groupRosters,absentSets,subsByDay,cellData,weekStart,weekStatus}=hist.hist[hist.hIdx];
   const hIdx=hist.hIdx;
 
   /* ── Non-undoable state ── */
-  const[draftWeek,setDraftWeek]=React.useState(()=>lsGetDraft());
-  const[archives,setArchivesRaw]=React.useState(()=>lsGetArchives());
-  const[passwords,setPasswords]=React.useState(lsLoadPasswords);
-  const[agencies,setAgenciesRaw]=React.useState(lsLoadAgencies);
+  const[draftWeek,setDraftWeek]=React.useState(()=>{try{return lsGetDraft();}catch{return null;}});
+  const[archives,setArchivesRaw]=React.useState(()=>{try{return lsGetArchives()||[];}catch{return[];}});
+  const[passwords,setPasswords]=React.useState(()=>{try{return lsLoadPasswords();}catch{return{};}});
+  const[agencies,setAgenciesRaw]=React.useState(()=>{try{return lsLoadAgencies();}catch{return[];}});
   const[agencyPipeline,setAgencyPipeline]=React.useState(lsLoadAgencyPipe);
   const[teacherMeta,setTeacherMeta]=React.useState(lsLoadTeacherMeta);
   const[viewMode,setViewMode]=React.useState("current");
@@ -8183,7 +8190,7 @@ function App(){
   const[selectedCardId,setSelectedCardId]=React.useState(null);
   const[activeTab,setActiveTab]=React.useState("board");
   const[schedTab,setSchedTab]=React.useState("teacher");
-  const[messages,setMessages_]=React.useState(lsGetMessages);
+  const[messages,setMessages_]=React.useState(()=>{try{return lsGetMessages()||{};}catch{return{};}});
   const[notifications,setNotifications]=React.useState([]);
   const[showPwMgr,setShowPwMgr]=React.useState(false);
   const[syncStatus,setSyncStatus]=React.useState("idle");
@@ -8704,20 +8711,38 @@ function App(){
 }
 
 class ErrorBoundary extends React.Component {
-  constructor(props){super(props);this.state={err:null,info:null};}
+  constructor(props){super(props);this.state={err:null,info:null,stack:null};}
   static getDerivedStateFromError(err){return{err};}
-  componentDidCatch(err,info){console.error("React render error:",err,info);this.setState({info});}
+  componentDidCatch(err,info){
+    console.error("React render error:",err,info);
+    this.setState({info,stack:err?.stack||String(err)});
+  }
   render(){
     if(this.state.err){
+      const msg=String(this.state.err);
+      const stack=this.state.stack||"";
+      const cstack=this.state.info?.componentStack||"";
       return(
-        <div style={{padding:32,fontFamily:"monospace",background:"#fef2f2",minHeight:"100vh"}}>
-          <div style={{maxWidth:700,margin:"0 auto",background:"white",borderRadius:12,padding:24,boxShadow:"0 4px 24px rgba(0,0,0,.1)",border:"2px solid #dc2626"}}>
-            <h2 style={{color:"#dc2626",marginBottom:12,fontSize:18}}>⚠️ Runtime Error</h2>
-            <pre style={{background:"#f8fafc",padding:12,borderRadius:6,fontSize:12,overflow:"auto",maxHeight:300,color:"#1e293b",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
-              {String(this.state.err)}
-              {this.state.info?.componentStack}
-            </pre>
-            <button onClick={()=>this.setState({err:null,info:null})} style={{marginTop:12,padding:"8px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700}}>Retry</button>
+        <div style={{padding:24,fontFamily:"monospace",background:"#fff1f2",minHeight:"100vh"}}>
+          <div style={{maxWidth:860,margin:"0 auto",background:"white",borderRadius:12,padding:28,boxShadow:"0 4px 32px rgba(220,38,38,.18)",border:"2.5px solid #dc2626"}}>
+            <h2 style={{color:"#dc2626",marginBottom:8,fontSize:20,fontWeight:800}}>⚠️ Hana LMS — Runtime Error</h2>
+            <p style={{color:"#6b7280",fontSize:12,marginBottom:16}}>아래 에러 내용을 개발자에게 전달해 주세요.</p>
+            <div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:6,padding:12,marginBottom:12}}>
+              <div style={{color:"#991b1b",fontWeight:700,fontSize:13,marginBottom:4}}>Error Message</div>
+              <div style={{color:"#dc2626",fontSize:13,wordBreak:"break-all"}}>{msg}</div>
+            </div>
+            {stack&&<details open style={{marginBottom:10}}>
+              <summary style={{cursor:"pointer",color:"#374151",fontSize:12,fontWeight:600,marginBottom:4}}>Stack Trace</summary>
+              <pre style={{background:"#f8fafc",padding:10,borderRadius:5,fontSize:11,overflow:"auto",maxHeight:220,color:"#1e293b",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{stack}</pre>
+            </details>}
+            {cstack&&<details style={{marginBottom:10}}>
+              <summary style={{cursor:"pointer",color:"#374151",fontSize:12,fontWeight:600,marginBottom:4}}>Component Stack</summary>
+              <pre style={{background:"#f8fafc",padding:10,borderRadius:5,fontSize:11,overflow:"auto",maxHeight:180,color:"#64748b",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{cstack}</pre>
+            </details>}
+            <div style={{display:"flex",gap:10,marginTop:16}}>
+              <button onClick={()=>this.setState({err:null,info:null,stack:null})} style={{padding:"8px 20px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>🔄 Retry</button>
+              <button onClick={()=>window.location.reload()} style={{padding:"8px 20px",background:"#f1f5f9",color:"#374151",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13}}>↺ Reload Page</button>
+            </div>
           </div>
         </div>
       );
@@ -8726,7 +8751,26 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-(async function(){await loadFromSupabase();ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);})();
+/* ── Mount ── */
+(async function(){
+  /* Fix 1: loadFromSupabase failure NEVER blocks rendering.
+     On network error / missing table, we fall back to localStorage data. */
+  try{
+    await loadFromSupabase();
+  }catch(e){
+    console.error("Supabase load failed — rendering with local data:",e);
+  }
+  /* Fix 3: Catch synchronous JS errors and display them via ErrorBoundary-style panel */
+  window.addEventListener("error",function(ev){
+    var el=document.getElementById("__global_err__");
+    if(!el){el=document.createElement("div");el.id="__global_err__";el.style.cssText="position:fixed;top:0;left:0;right:0;z-index:99999;background:#fff1f2;border-bottom:3px solid #dc2626;padding:16px 24px;font-family:monospace;font-size:12px;";document.body.prepend(el);}
+    el.innerHTML="<b style='color:#dc2626'>⚠️ JS Error: "+String(ev.message)+"</b><br><span style='color:#6b7280'>"+String(ev.filename)+" line "+ev.lineno+"</span><br><pre style='max-height:120px;overflow:auto;margin:8px 0 0;color:#374151'>"+String(ev.error?.stack||"")+"</pre><button onclick='this.parentNode.remove()' style='margin-top:8px;padding:4px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer'>✕ Close</button>";
+  });
+  window.addEventListener("unhandledrejection",function(ev){
+    console.error("Unhandled promise rejection:",ev.reason);
+  });
+  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
+})();
 </script>
 
 <script>
