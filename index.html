@@ -189,7 +189,15 @@
 window.LOA_BANNER_URL = "https://ummzxtfjfwwdvzpsrpym.supabase.co/storage/v1/object/public/lms-assets/loa-banner.jpg"; /* LOA 서류 상단 배너 */
 window.LOA_SIG_URL    = "https://ummzxtfjfwwdvzpsrpym.supabase.co/storage/v1/object/public/lms-assets/loa-signature.png"; /* LOA 서명 이미지 */
 </script>
+
 <script>
+window.HANA_LOGO_SRC  = "https://ummzxtfjfwwdvzpsrpym.supabase.co/storage/v1/object/public/lms-assets/hana-logo.jpg"; /* 학원 로고 (ID카드 등) */
+</script>
+<script type="text/babel">
+
+/* ══════════════════════════════════════════════════════════════════
+   Supabase init — moved here so it's in scope for all components
+══════════════════════════════════════════════════════════════════ */
 /* ── Supabase Cloud Sync ── */
 const SUPABASE_URL = 'https://ummzxtfjfwwdvzpsrpym.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtbXp4dGZqZnd3ZHZ6cHNycHltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzU3ODMsImV4cCI6MjA5MzE1MTc4M30.9u4gpsjBtvyPA6qvyUYTiAVoOsj8vez9JetzOWx0Zt8';
@@ -247,12 +255,7 @@ try{
 window.syncToSupabase = syncToSupabase;
 window.loadFromSupabase = loadFromSupabase;
 window.triggerSync = triggerSync;
-</script>
 
-<script>
-window.HANA_LOGO_SRC  = "https://ummzxtfjfwwdvzpsrpym.supabase.co/storage/v1/object/public/lms-assets/hana-logo.jpg"; /* 학원 로고 (ID카드 등) */
-</script>
-<script type="text/babel">
 const { useState, useRef, useEffect, useMemo } = React;
 
 /* ═════════════════════════════════════════════════════
@@ -9178,4 +9181,4 @@ class ErrorBoundary extends React.Component {
 })();
 </script>
 </body>
-</html>
+<
