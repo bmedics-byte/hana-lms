@@ -8142,11 +8142,17 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
   const myKanbanCards=React.useMemo(()=>{
     if(!kanbanCards)return[];
     const contractedIds=new Set((agencies||[]).map(a=>a.id));
+    /* Derive canonical agencyId: use stored agencyId, or build from agencyName+agencyNat for legacy cards */
+    const getCardAgId=c=>{
+      if(c.agencyId)return c.agencyId;
+      if(c.agencyName&&c.agencyNat)return c.agencyName.trim().toUpperCase()+"("+c.agencyNat.trim().toUpperCase()+")";
+      return "";
+    };
     /* Rule 1: agencyId must exist. Rule 2: agencyId must be in contracted list */
-    const validCards=kanbanCards.filter(c=>c.agencyId&&contractedIds.has(c.agencyId));
+    const validCards=kanbanCards.filter(c=>{const aid=getCardAgId(c);return aid&&contractedIds.has(aid);});
     const fid=filterAgency||(isAdmin?null:agencyId);
     if(!fid)return validCards;
-    return validCards.filter(c=>c.agencyId===fid);
+    return validCards.filter(c=>getCardAgId(c)===fid);
   },[kanbanCards,isAdmin,agencyId,filterAgency,agencies]);
 
   const myStudentsCount=myKanbanCards.length;
