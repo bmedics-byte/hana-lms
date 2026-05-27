@@ -2992,6 +2992,8 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
   const scrollRef=React.useRef(null);
   /* drag-to-scroll state — plain ref to avoid re-renders on every mousemove */
   const dragRef=React.useRef({active:false,startX:0,startScroll:0,moved:false});
+  /* card view popup */
+  const[viewCard,setViewCard]=React.useState(null);
   const today=new Date();today.setHours(0,0,0,0);
   const MS_WEEK=7*24*60*60*1000;
   const NUM_WEEKS=72;
@@ -3236,17 +3238,19 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
                               const hasLink=!!(bar.cardLink);
                               return(
                                 <div key={bar.barKey}
-                                  title={(isGhost?"[임시 배정] ":"")+bar.label+"\n"+fmtDate(bar.startDateStr)+" → "+fmtDate(bar.endDateStr)+(hasLink?"\n🔗 클릭하여 카드 열기":"")}
+                                  title={(isGhost?"[임시 배정] ":"")+bar.label+"\n"+fmtDate(bar.startDateStr)+" → "+fmtDate(bar.endDateStr)+"\n👆 클릭하여 상세 정보 보기"}
                                   onClick={(e)=>{
                                     /* if the mouse moved during drag, treat as scroll — not a click */
                                     if(dragRef.current.moved){e.stopPropagation();return;}
-                                    if(hasLink)window.open(bar.cardLink,"_blank","noopener");
-                                    else alert("이 카드에 연결된 링크가 없습니다.\n카드 편집 화면에서 🔗 External Link 필드를 입력하세요.");
+                                    /* open read-only card detail popup */
+                                    const found=(kanbanCards||[]).find(c=>c.id===bar.cardId);
+                                    if(found)setViewCard(found);
+                                    else if(hasLink)window.open(bar.cardLink,"_blank","noopener");
                                   }}
                                   style={{position:"absolute",left:x,top:y,width:Math.max(bw,6),height:LANE_H-5,
                                     background:isGhost?"repeating-linear-gradient(45deg,"+bc+","+bc+" 4px,rgba(255,255,255,.7) 4px,rgba(255,255,255,.7) 8px)":bc,
                                     border:isGhost?"1.5px dashed rgba(0,0,0,.35)":"1.5px solid rgba(0,0,0,.14)",
-                                    borderRadius:4,cursor:hasLink?"pointer":"grab",zIndex:3,
+                                    borderRadius:4,cursor:"pointer",zIndex:3,
                                     display:"flex",alignItems:"center",padding:"0 5px",overflow:"hidden",
                                     opacity:isGhost?0.55:1,
                                     boxShadow:isGhost?"none":"0 1px 3px rgba(0,0,0,.08)"}}>
@@ -3278,6 +3282,8 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
           </div>
         </div>
       </div>
+      {/* Card detail popup */}
+      {viewCard&&<CardViewModal card={viewCard} onClose={()=>setViewCard(null)}/>}
     </div>
   );
 }
@@ -7969,6 +7975,73 @@ ${driverPhotoHTML}
 }
 
 /* ════════════════════════════════════════════════════════════════════
+   CardViewModal — reusable read-only card detail popup
+   ════════════════════════════════════════════════════════════════════ */
+function CardViewModal({card,onClose}){
+  if(!card)return null;
+  const STATUS_COLORS={registered:"#8b5cf6",incoming:"#f59e0b",current:"#0891b2",leaving:"#f97316",graduated:"#16a34a",archived:"#64748b"};
+  const STATUS_LABELS={registered:"Registered",incoming:"Incoming",current:"Current Student",leaving:"Leaving",graduated:"Graduated",archived:"Archived"};
+  const sc=STATUS_COLORS[card.status]||"#64748b";
+  const sl=STATUS_LABELS[card.status]||card.status;
+  const members=card.members||[];
+  return ReactDOM.createPortal(
+    <div style={{position:"fixed",inset:0,zIndex:9100,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"center",justifyContent:"center"}}
+      onClick={onClose}>
+      <div style={{background:"white",borderRadius:14,width:"min(580px,95vw)",maxHeight:"85vh",overflowY:"auto",
+        boxShadow:"0 20px 60px rgba(0,0,0,.32)"}} onClick={e=>e.stopPropagation()}>
+        {/* Header */}
+        <div style={{background:AG_NAVY,borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:15,fontWeight:800,color:"white"}}>
+              {members[0]?.name||"(unnamed)"}{members.length>1?" +"+(members.length-1)+" members":""}
+            </div>
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:3,display:"flex",alignItems:"center",gap:8}}>
+              {card.agencyId&&<span>🏢 {card.agencyId}</span>}
+              <span style={{background:sc,color:"white",borderRadius:8,padding:"1px 9px",fontSize:10,fontWeight:700}}>{sl}</span>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {card.trelloUrl&&(
+              <a href={card.trelloUrl} target="_blank" rel="noopener noreferrer"
+                style={{background:"#0052cc",color:"white",borderRadius:8,padding:"6px 13px",fontSize:11,fontWeight:700,textDecoration:"none"}}>🔗 Trello</a>
+            )}
+            <button onClick={onClose}
+              style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:7,color:"white",fontSize:18,cursor:"pointer",width:30,height:30,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          </div>
+        </div>
+        {/* Body */}
+        <div style={{padding:"18px 20px"}}>
+          <div style={{fontSize:11,fontWeight:800,color:"#475569",textTransform:"uppercase",letterSpacing:.6,marginBottom:10}}>
+            Members ({members.length})
+          </div>
+          {members.map((m,i)=>(
+            <div key={i} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:8}}>
+                <div style={{fontSize:14,fontWeight:800,color:"#0f172a"}}>{m.name||"(unnamed)"}</div>
+                {m.nationality&&<span style={{fontSize:11,background:"#dbeafe",color:"#1d4ed8",borderRadius:6,padding:"2px 9px",fontWeight:700}}>🌏 {m.nationality}</span>}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"5px 18px",fontSize:12,color:"#475569"}}>
+                {m.course&&<div><b>Course:</b> {m.course}</div>}
+                {m.roomNumber&&<div><b>Room:</b> {m.roomNumber}</div>}
+                {(m.studyStart||card.studyStart)&&<div style={{gridColumn:"1/-1"}}><b>Period:</b> {m.studyStart||card.studyStart} → {m.studyEnd||card.studyEnd}</div>}
+                {m.roomType&&<div><b>Room Type:</b> {m.roomType}</div>}
+                {(m.birthYear||m.birthMonth||m.birthDay)&&<div><b>DOB:</b> {[m.birthYear,m.birthMonth,m.birthDay].filter(Boolean).join("-")}</div>}
+              </div>
+              {m.specialRequests&&<div style={{marginTop:8,fontSize:11,color:"#92400e",background:"#fffbeb",borderRadius:6,padding:"6px 10px",border:"1px solid #fde68a"}}>📝 {m.specialRequests}</div>}
+            </div>
+          ))}
+          {card.notes&&<div style={{marginBottom:10,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#166534"}}>📋 <b>Notes:</b> {card.notes}</div>}
+          <div style={{padding:"8px 12px",background:"#f1f5f9",borderRadius:8,fontSize:11,color:"#94a3b8",textAlign:"center",fontStyle:"italic"}}>
+            👁 Read-only — 수정은 Student Management 탭에서 가능합니다.
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
    Agency Pipeline
    ════════════════════════════════════════════════════════════════════ */
 
@@ -7980,6 +8053,7 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
   const[selId,setSelId]=React.useState(null);
   const[activeTab,setActiveTab]=React.useState("pipeline");
   const[filterAgency,setFilterAgency]=React.useState("");
+  const[viewCard,setViewCard]=React.useState(null);
   const selEntry=(myEntries||[]).find(e=>e.id===selId)||null;
 
   /* New agency registration form state */
@@ -8054,13 +8128,16 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
   const filteredEntries=filterAgency?(myEntries||[]).filter(e=>e.agencyId===filterAgency):(myEntries||[]);
   const pipelineEntries=filteredEntries.filter(e=>!e.kanbanCardId);
 
-  /* My Students kanban: filter kanbanCards by agency */
+  /* My Students kanban: filter kanbanCards — must have agencyId AND that agency must be contracted */
   const myKanbanCards=React.useMemo(()=>{
     if(!kanbanCards)return[];
+    const contractedIds=new Set((agencies||[]).map(a=>a.id));
+    /* Rule 1: agencyId must exist. Rule 2: agencyId must be in contracted list */
+    const validCards=kanbanCards.filter(c=>c.agencyId&&contractedIds.has(c.agencyId));
     const fid=filterAgency||(isAdmin?null:agencyId);
-    if(!fid)return kanbanCards;
-    return kanbanCards.filter(c=>c.agencyId===fid);
-  },[kanbanCards,isAdmin,agencyId,filterAgency]);
+    if(!fid)return validCards;
+    return validCards.filter(c=>c.agencyId===fid);
+  },[kanbanCards,isAdmin,agencyId,filterAgency,agencies]);
 
   const myStudentsCount=myKanbanCards.length;
 
@@ -8259,8 +8336,11 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
                         const nat=primaryMember?.nationality||"";
                         return(
                           <div key={card.id}
+                            onClick={()=>setViewCard(card)}
+                            title="클릭하여 학생 상세 정보 보기"
                             style={{background:"white",borderRadius:7,padding:"8px 10px",marginBottom:6,
-                              border:"1px solid "+col.color+"40",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
+                              cursor:"pointer",border:"1px solid "+col.color+"40",boxShadow:"0 1px 3px rgba(0,0,0,.06)",
+                              transition:"box-shadow .15s"}}>
                             <div style={{fontSize:12,fontWeight:700,color:"#1e293b",marginBottom:2}}>
                               {nm}{cnt>1?" +"+(cnt-1):""}
                             </div>
@@ -8271,11 +8351,9 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
                               </div>
                             )}
                             {card.trelloUrl&&(
-                              <a href={card.trelloUrl} target="_blank" rel="noopener noreferrer"
-                                onClick={e=>e.stopPropagation()}
-                                style={{display:"inline-block",marginTop:4,fontSize:9,color:"#3b82f6",fontWeight:600,textDecoration:"none"}}>
+                              <span style={{display:"inline-block",marginTop:4,fontSize:9,color:"#3b82f6",fontWeight:600}}>
                                 🔗 Trello
-                              </a>
+                              </span>
                             )}
                           </div>
                         );
@@ -8416,6 +8494,9 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
           🔄 REFRESH
         </button>
       </div>
+
+      {/* Card view modal (read-only) */}
+      {viewCard&&<CardViewModal card={viewCard} onClose={()=>setViewCard(null)}/>}
     </div>
   );
 }
@@ -9603,9 +9684,7 @@ class ErrorBoundary extends React.Component {
       const msg=String(this.state.err);
       const stack=this.state.stack||"";
       const cstack=this.state.info?.componentStack||"";
-      /* Extract first few lines of JS stack for quick diagnosis */
       const stackLines=stack.split("\n").slice(0,8).join("\n");
-      /* Copy to clipboard helper */
       const copyAll=()=>{
         const txt=`ERROR: ${msg}\n\nJS STACK:\n${stack}\n\nCOMPONENT STACK:\n${cstack}`;
         navigator.clipboard?.writeText(txt).catch(()=>{});
@@ -9615,25 +9694,36 @@ class ErrorBoundary extends React.Component {
           <div style={{maxWidth:900,margin:"0 auto",background:"white",borderRadius:12,padding:28,boxShadow:"0 4px 32px rgba(220,38,38,.18)",border:"2.5px solid #dc2626"}}>
             <h2 style={{color:"#dc2626",marginBottom:8,fontSize:20,fontWeight:800}}>⚠️ Hana LMS — Runtime Error</h2>
             <p style={{color:"#6b7280",fontSize:12,marginBottom:12}}>아래 전체 내용을 개발자에게 복사하여 전달해 주세요.</p>
-            {/* Error message — always visible */}
             <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:6,padding:"10px 14px",marginBottom:10}}>
               <div style={{color:"#991b1b",fontWeight:800,fontSize:13,marginBottom:3}}>🔴 Error Message</div>
               <div style={{color:"#dc2626",fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{msg}</div>
             </div>
-            {/* JS Stack — first 8 lines always open for easy copy */}
-            {stack&&(
-              <details open style={{marginBottom:10}}>
-                <summary style={{cursor:"pointer",fontWeight:700,fontSize:11,color:"#6b7280",marginBottom:4}}>JS Stack (first 8 lines)</summary>
-                <pre style={{margin:0,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:4,padding:"8px 10px",fontSize:10,overflowX:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all",color:"#374151"}}>{stackLines}</pre>
+            {stackLines&&(
+              <details style={{marginBottom:10}}>
+                <summary style={{cursor:"pointer",color:"#374151",fontSize:12,fontWeight:700,padding:"6px 10px",background:"#f8fafc",borderRadius:6,border:"1px solid #e2e8f0"}}>
+                  📜 JS Stack Trace (first 8 lines)
+                </summary>
+                <pre style={{background:"#f8fafc",padding:12,borderRadius:"0 0 6px 6px",fontSize:11,overflow:"auto",maxHeight:200,color:"#1e293b",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0,borderTop:"1px solid #e2e8f0"}}>{stackLines}</pre>
               </details>
             )}
             {cstack&&(
               <details style={{marginBottom:10}}>
-                <summary style={{cursor:"pointer",fontWeight:700,fontSize:11,color:"#6b7280",marginBottom:4}}>Component Stack</summary>
-                <pre style={{margin:0,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:4,padding:"8px 10px",fontSize:10,overflowX:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all",color:"#374151"}}>{cstack}</pre>
+                <summary style={{cursor:"pointer",color:"#374151",fontSize:12,fontWeight:700,padding:"6px 10px",background:"#f8fafc",borderRadius:6,border:"1px solid #e2e8f0"}}>
+                  ⚛️ Component Stack
+                </summary>
+                <pre style={{background:"#f8fafc",padding:12,borderRadius:"0 0 6px 6px",fontSize:11,overflow:"auto",maxHeight:200,color:"#1e293b",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0,borderTop:"1px solid #e2e8f0"}}>{cstack}</pre>
               </details>
             )}
-            <button onClick={copyAll} style={{marginTop:8,padding:"7px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:12}}>📋 Copy All to Clipboard</button>
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              <button onClick={()=>this.setState({err:null,info:null,stack:null})}
+                style={{padding:"8px 18px",background:"#dc2626",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:12}}>
+                🔄 Retry
+              </button>
+              <button onClick={copyAll}
+                style={{padding:"8px 18px",background:"#1e3a8a",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:12}}>
+                📋 Copy All to Clipboard
+              </button>
+            </div>
           </div>
         </div>
       );
