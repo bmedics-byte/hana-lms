@@ -8150,10 +8150,12 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
   /* Country name lookup */
   const COUNTRY_NAMES={
     "KR":"Korea","TW":"Taiwan","JP":"Japan","CN":"China","VN":"Vietnam",
-    "TH":"Thailand","ID":"Indonesia","MY":"Malaysia","AR":"Saudi Arabia",
-    "RU":"Russia","MN":"Mongolia","PH":"Philippines","HK":"Hong Kong",
-    "SG":"Singapore","US":"United States","CA":"Canada","AU":"Australia",
+    "TH":"Thailand","ID":"Indonesia","MY":"Malaysia","AR":"Arab",
+    "SAUDI":"Saudi Arabia","RU":"Russia","MN":"Mongolia","ES":"Spain",
+    "PH":"Philippines","HK":"Hong Kong","SG":"Singapore",
+    "US":"United States","CA":"Canada","AU":"Australia",
   };
+  const NAT_ORDER=["KR","TW","CN","JP","AR","SAUDI","VN","MN","TH","RU","ES"];
 
   /* Pipeline stage: 0=no name 1=name filled 2=letters confirmed 3=card created */
   function getStage(entry){
@@ -8226,8 +8228,15 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
   const agByNat=React.useMemo(()=>{
     const map={};
     (agencies||[]).forEach(a=>{const nat=a.nationality||"??";if(!map[nat])map[nat]=[];map[nat].push(a);});
-    return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));
-  },[agencies]);
+    const entries=Object.entries(map);
+    entries.sort((a,b)=>{
+      const ai=NAT_ORDER.indexOf(a[0]),bi=NAT_ORDER.indexOf(b[0]);
+      if(ai>=0&&bi>=0)return ai-bi;
+      if(ai>=0)return-1;if(bi>=0)return 1;
+      return a[0].localeCompare(b[0]);
+    });
+    return entries;
+  },[agencies,NAT_ORDER]);
 
   const agInitials=(isAdmin?"HQ":agencyId||"AG").replace(/\(.*\)/,"").trim().slice(0,2).toUpperCase();
   const agLabel=isAdmin?"Agency Management":agencyId;
@@ -8312,36 +8321,40 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
           {/* New Agency Registration Form */}
           <div style={{background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:12,padding:18,marginBottom:24}}>
             <div style={{fontSize:14,fontWeight:800,color:AG_NAVY,marginBottom:14}}>＋ Register New Agency</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
-              <div>
+            <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap",marginBottom:12}}>
+              <div style={{flex:"2 1 160px",minWidth:0}}>
                 <label style={{fontSize:11,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Agency Name *</label>
                 <input value={newAg.name} onChange={e=>setNewAg(p=>({...p,name:e.target.value}))}
                   placeholder="e.g. Global Study" maxLength={60}
                   style={{width:"100%",padding:"8px 10px",border:"1.5px solid #cbd5e1",borderRadius:8,fontSize:13,boxSizing:"border-box"}}/>
               </div>
-              <div>
+              <div style={{flex:"2 1 140px",minWidth:0}}>
                 <label style={{fontSize:11,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Agency ID *</label>
                 <input value={newAg.id} onChange={e=>setNewAg(p=>({...p,id:e.target.value}))}
                   placeholder="e.g. GOPHIL(TW)" maxLength={30}
                   style={{width:"100%",padding:"8px 10px",border:"1.5px solid #cbd5e1",borderRadius:8,fontSize:13,boxSizing:"border-box"}}/>
               </div>
-              <div>
+              <div style={{flex:"1 1 110px",minWidth:0}}>
                 <label style={{fontSize:11,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Nationality Code</label>
-                <input value={newAg.nat} onChange={e=>setNewAg(p=>({...p,nat:e.target.value.toUpperCase()}))}
-                  placeholder="e.g. TW" maxLength={2}
-                  style={{width:"100%",padding:"8px 10px",border:"1.5px solid #cbd5e1",borderRadius:8,fontSize:13,boxSizing:"border-box"}}/>
+                <select value={newAg.nat} onChange={e=>setNewAg(p=>({...p,nat:e.target.value}))}
+                  style={{width:"100%",padding:"8px 10px",border:"1.5px solid #cbd5e1",borderRadius:8,fontSize:13,boxSizing:"border-box",background:"white"}}>
+                  <option value="">— Select —</option>
+                  {["KR","TW","CN","JP","AR","SAUDI","VN","MN","TH","RU","ES"].map(c=>(
+                    <option key={c} value={c}>{c} — {COUNTRY_NAMES[c]||c}</option>
+                  ))}
+                </select>
               </div>
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:11,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Contract / Documents</label>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <input ref={agDocRef} type="file" style={{display:"none"}} onChange={e=>setAgDocFile(e.target.files[0]||null)}/>
-                <button onClick={()=>agDocRef.current?.click()}
-                  style={{padding:"7px 14px",border:"1.5px solid #cbd5e1",borderRadius:8,background:"white",fontSize:12,cursor:"pointer",fontWeight:600}}>
-                  📎 Upload Document
-                </button>
-                {agDocFile&&<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>✅ {agDocFile.name}</span>}
-                {!agDocFile&&<span style={{fontSize:11,color:"#94a3b8"}}>No file selected</span>}
+              <div style={{flex:"1 1 160px",minWidth:0}}>
+                <label style={{fontSize:11,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Contract / Documents</label>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <input ref={agDocRef} type="file" style={{display:"none"}} onChange={e=>setAgDocFile(e.target.files[0]||null)}/>
+                  <button onClick={()=>agDocRef.current?.click()}
+                    style={{padding:"7px 12px",border:"1.5px solid #cbd5e1",borderRadius:8,background:"white",fontSize:12,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>
+                    📎 Upload
+                  </button>
+                  {agDocFile&&<span style={{fontSize:11,color:"#16a34a",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:100}}>✅ {agDocFile.name}</span>}
+                  {!agDocFile&&<span style={{fontSize:11,color:"#94a3b8"}}>No file</span>}
+                </div>
               </div>
             </div>
             {newAgErr&&<div style={{fontSize:12,color:"#dc2626",marginBottom:8,fontWeight:600}}>{newAgErr}</div>}
@@ -8367,17 +8380,20 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
                       borderRadius:12,padding:"1px 9px",fontWeight:800}}>{list.length}</span>
                   </div>
                   <div style={{background:"#f8fafc"}}>
-                    {list.map(ag=>(
-                      <div key={ag.id} style={{padding:"8px 14px",borderBottom:"1px solid #e2e8f0",
-                        display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <div>
+                    {list.map(ag=>{
+                      const pw=passwords?.[ag.id]||ag.password||"hana123";
+                      return(
+                      <div key={ag.id} style={{padding:"8px 14px",borderBottom:"1px solid #e2e8f0"}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
                           <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{ag.name||ag.id}</div>
-                          <div style={{fontSize:10,color:"#94a3b8"}}>ID: {ag.id}</div>
+                          <span style={{fontSize:10,background:"#dcfce7",color:"#15803d",borderRadius:6,
+                            padding:"2px 8px",fontWeight:700,whiteSpace:"nowrap"}}>✅ Contracted</span>
                         </div>
-                        <span style={{fontSize:10,background:"#dcfce7",color:"#15803d",borderRadius:6,
-                          padding:"2px 8px",fontWeight:700,whiteSpace:"nowrap"}}>✅ Contracted</span>
+                        <div style={{fontSize:10,color:"#64748b"}}>ID: <span style={{fontWeight:700,color:"#1e40af"}}>{ag.id}</span></div>
+                        {isAdmin&&<div style={{fontSize:10,color:"#64748b",marginTop:2}}>PW: <span style={{fontWeight:700,color:"#7c3aed",fontFamily:"monospace",background:"#f3f4f6",padding:"0 4px",borderRadius:3}}>{pw}</span></div>}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -8669,7 +8685,7 @@ function DataToolsPage(){
 /* ═════════════════════════════════════════════════════
    AgencyPage — wrapper around AgencyPipeline with onCreateCard + refresh polling
 ═════════════════════════════════════════════════════ */
-function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCards,pushSnap,agencies,setAgencies,onOpenCard}){
+function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCards,pushSnap,agencies,setAgencies,onOpenCard,passwords}){
   /* Wire up the REFRESH button defined inside AgencyPipeline */
   React.useEffect(()=>{
     window._agencyRefresh=async function(){
@@ -8699,6 +8715,7 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
       setAgencyPipeline={setAgencyPipeline}
       setAgencies={setAgencies}
       onOpenCard={onOpenCard}
+      passwords={passwords}
     />
   );
 }
@@ -9670,7 +9687,7 @@ function App(){
         {page==="teachers"&&<TeacherListPage sched={displaySched} teacherMeta={teacherMeta} setTeacherMeta={setTeacherMeta} passwords={passwords}/>}
         {page==="dormitory"&&<DormitoryPage kanbanCards={kanbanCards} pushSnap={safePush} agencyPipeline={agencyPipeline} agencies={agencies} onOpenCard={card=>setModalCard(card)}/>}
         {page==="meal"&&<MealPage mealPlan={mealPlan} setMealPlan={setMealPlan} mealDraft={mealDraft} setMealDraft={setMealDraft} mealArchives={mealArchives} setMealArchives={setMealArchives} kanbanCards={kanbanCards} teacherMeta={teacherMeta} mealSkips={mealSkips}/>}
-        {page==="agency"&&<AgencyPage agencyId={null} isAdmin={true} agencyPipeline={agencyPipeline} setAgencyPipeline={setAgencyPipeline} kanbanCards={kanbanCards} pushSnap={safePush} agencies={agencies} setAgencies={setAgenciesRaw} onOpenCard={card=>setModalCard(card)}/>}
+        {page==="agency"&&<AgencyPage agencyId={null} isAdmin={true} agencyPipeline={agencyPipeline} setAgencyPipeline={setAgencyPipeline} kanbanCards={kanbanCards} pushSnap={safePush} agencies={agencies} setAgencies={setAgenciesRaw} onOpenCard={card=>setModalCard(card)} passwords={passwords}/>}
         
 
         {page==="schedule"&&(
