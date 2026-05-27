@@ -2986,14 +2986,13 @@ function RoomChangeSection({member,onChange,isFamily}){
 /* ═════════════════════════════════════════════════════
    DormitorySheetModal  (read-only dormitory chart)
 ═════════════════════════════════════════════════════ */
-function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
+function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds,onOpenCard}){
   /* ghostCardIds: Set of card IDs that are tentative (from pipeline) — rendered faintly */
   const _ghostIds=ghostCardIds||new Set();
   const scrollRef=React.useRef(null);
   /* drag-to-scroll state — plain ref to avoid re-renders on every mousemove */
   const dragRef=React.useRef({active:false,startX:0,startScroll:0,moved:false});
   /* card view popup */
-  const[viewCard,setViewCard]=React.useState(null);
   const today=new Date();today.setHours(0,0,0,0);
   const MS_WEEK=7*24*60*60*1000;
   const NUM_WEEKS=72;
@@ -3244,8 +3243,7 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
                                     if(dragRef.current.moved){e.stopPropagation();return;}
                                     /* open read-only card detail popup */
                                     const found=(kanbanCards||[]).find(c=>c.id===bar.cardId);
-                                    if(found)setViewCard(found);
-                                    else if(hasLink)window.open(bar.cardLink,"_blank","noopener");
+                                    if(found){if(onOpenCard)onOpenCard(found);}else if(hasLink)window.open(bar.cardLink,"_blank","noopener");
                                   }}
                                   style={{position:"absolute",left:x,top:y,width:Math.max(bw,6),height:LANE_H-5,
                                     background:isGhost?"repeating-linear-gradient(45deg,"+bc+","+bc+" 4px,rgba(255,255,255,.7) 4px,rgba(255,255,255,.7) 8px)":bc,
@@ -3282,8 +3280,6 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds}){
           </div>
         </div>
       </div>
-      {/* Card detail popup */}
-      {viewCard&&<CardViewModal card={viewCard} onClose={()=>setViewCard(null)}/>}
     </div>
   );
 }
@@ -7389,7 +7385,7 @@ function DetailPanel({e,save,del,createCard,isAdmin,agencyIds,kanbanCards,agenci
   function updMember(i,m){upd({members:(draft.members||[]).map((x,j)=>j===i?m:x)});}
   function addMember(){
     const first=(draft.members||[])[0]||{};
-    upd({members:[...(draft.members||[]),{name:"",birthYear:"",birthMonth:"",birthDay:"",nationality:first.nationality||"Taiwanese",course:"",roomType:first.roomType||"",roomNumber:"",studyStart:first.studyStart||"",studyEnd:first.studyEnd||"",passportPhoto:null,specialRequests:""}]});
+    upd({members:[...(draft.members||[]),{name:"",gender:"",birthYear:"",birthMonth:"",birthDay:"",nationality:first.nationality||"Taiwanese",course:"",roomType:first.roomType||"",roomNumber:"",studyStart:first.studyStart||"",studyEnd:first.studyEnd||"",passportPhoto:null,specialRequests:""}]});
   }
   function removeMember(i){if((draft.members||[]).length<=1)return;upd({members:(draft.members||[]).filter((_,j)=>j!==i)});}
 
@@ -7679,6 +7675,21 @@ ${driverPhotoHTML}
                   <select style={INP} value={m.nationality} onChange={ev=>updMember(i,{...m,nationality:ev.target.value})}>
                     {NATIONALITIES.map(n=><option key={n} value={n}>{n}</option>)}
                   </select></div>
+              </div>
+              <div style={{marginBottom:10}}>
+                <div style={LBL}>Gender</div>
+                <div style={{display:"flex",gap:8}}>
+                  {["M","F"].map(g=>(
+                    <button key={g} type="button"
+                      onClick={()=>updMember(i,{...m,gender:m.gender===g?"":g})}
+                      style={{padding:"6px 18px",border:`1.5px solid ${m.gender===g?(g==="M"?"#3b82f6":"#ec4899"):"#e2e8f0"}`,
+                        borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,
+                        background:m.gender===g?(g==="M"?"#eff6ff":"#fdf2f8"):"white",
+                        color:m.gender===g?(g==="M"?"#1d4ed8":"#db2777"):"#9ca3af"}}>
+                      {g==="M"?"♂ Male":"♀ Female"}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr 1.2fr",gap:10,marginBottom:10}}>
                 <div><div style={LBL}>Birth Year</div>
@@ -8046,14 +8057,13 @@ function CardViewModal({card,onClose}){
    ════════════════════════════════════════════════════════════════════ */
 
 function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
-  agencyPipeline,setAgencyPipeline,passwords,teacherMeta,setAgencies}){
+  agencyPipeline,setAgencyPipeline,passwords,teacherMeta,setAgencies,onOpenCard}){
 
   const agencyId=isAdmin?null:(agencies||[]).find(a=>a.id)?.id;
   const myEntries=(isAdmin?agencyPipeline:(agencyPipeline||[]).filter(e=>e.agencyId===agencyId))||[];
   const[selId,setSelId]=React.useState(null);
   const[activeTab,setActiveTab]=React.useState("pipeline");
   const[filterAgency,setFilterAgency]=React.useState("");
-  const[viewCard,setViewCard]=React.useState(null);
   const selEntry=(myEntries||[]).find(e=>e.id===selId)||null;
 
   /* New agency registration form state */
@@ -8191,11 +8201,11 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           {isAdmin&&(
             <select value={filterAgency} onChange={e=>setFilterAgency(e.target.value)}
-              style={{padding:"7px 10px",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:8,
-                fontSize:12,fontWeight:700,background:"rgba(255,255,255,.12)",color:"white",cursor:"pointer"}}>
-              <option value="">All Agencies ({(agencies||[]).length})</option>
+              style={{padding:"7px 10px",border:"1.5px solid rgba(255,255,255,.4)",borderRadius:8,
+                fontSize:12,fontWeight:700,background:AG_NAVY,color:"white",cursor:"pointer"}}>
+              <option value="" style={{background:"#1e293b",color:"white"}}>All Agencies ({(agencies||[]).length})</option>
               {[...new Set([...allAgencyIds,...(agencies||[]).map(a=>a.id)])].sort().map(id=>(
-                <option key={id} value={id}>{id}</option>
+                <option key={id} value={id} style={{background:"#1e293b",color:"white"}}>{id}</option>
               ))}
             </select>
           )}
@@ -8203,7 +8213,7 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
             <button onClick={()=>{
                 const newEntry={
                   id:"pipe_"+Date.now(),agencyId:agencyId||"",cardType:"Individual",
-                  members:[{name:"",nationality:"",birthYear:"",birthMonth:"",birthDay:"",
+                  members:[{name:"",gender:"",nationality:"",birthYear:"",birthMonth:"",birthDay:"",
                     course:"",roomType:"",studyStart:"",studyEnd:"",passportPhoto:null,specialRequests:""}],
                   consultant:"",studyStart:"",studyEnd:"",
                   flightInfo:{pickupRequired:true,flightNumber:"",airport:"Clark",arrivalDate:"",arrivalTime:""},
@@ -8336,7 +8346,7 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
                         const nat=primaryMember?.nationality||"";
                         return(
                           <div key={card.id}
-                            onClick={()=>setViewCard(card)}
+                            onClick={()=>{if(onOpenCard)onOpenCard(card);}}
                             title="클릭하여 학생 상세 정보 보기"
                             style={{background:"white",borderRadius:7,padding:"8px 10px",marginBottom:6,
                               cursor:"pointer",border:"1px solid "+col.color+"40",boxShadow:"0 1px 3px rgba(0,0,0,.06)",
@@ -8495,8 +8505,6 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
         </button>
       </div>
 
-      {/* Card view modal (read-only) */}
-      {viewCard&&<CardViewModal card={viewCard} onClose={()=>setViewCard(null)}/>}
     </div>
   );
 }
@@ -8590,7 +8598,7 @@ function DataToolsPage(){
 /* ═════════════════════════════════════════════════════
    AgencyPage — wrapper around AgencyPipeline with onCreateCard + refresh polling
 ═════════════════════════════════════════════════════ */
-function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCards,pushSnap,agencies,setAgencies}){
+function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCards,pushSnap,agencies,setAgencies,onOpenCard}){
   /* Wire up the REFRESH button defined inside AgencyPipeline */
   React.useEffect(()=>{
     window._agencyRefresh=async function(){
@@ -8619,6 +8627,7 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
       agencyPipeline={agencyPipeline}
       setAgencyPipeline={setAgencyPipeline}
       setAgencies={setAgencies}
+      onOpenCard={onOpenCard}
     />
   );
 }
@@ -8626,7 +8635,7 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
 /* ═════════════════════════════════════════════════════
    DormitoryPage — room grid overview + timeline modal
 ═════════════════════════════════════════════════════ */
-function DormitoryPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
+function DormitoryPage({kanbanCards,pushSnap,agencyPipeline,agencies,onOpenCard}){
   const[targetRoom,setTargetRoom]=React.useState(null);
   const[showSheet,setShowSheet]=React.useState(false);
 
@@ -8749,6 +8758,7 @@ function DormitoryPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
           targetRoom={targetRoom}
           onClose={()=>setShowSheet(false)}
           ghostCardIds={ghostCardIds}
+          onOpenCard={onOpenCard}
         />
       )}
     </div>
@@ -9144,6 +9154,7 @@ function App(){
   const[lunchPeriod,setLunchPeriod_]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("hana_lunch_period")||"null");}catch{return null;}});
   const[dormSheetRoom,setDormSheetRoom]=React.useState(null);
   const[showDormSheet,setShowDormSheet]=React.useState(false);
+  const[modalCard,setModalCard]=React.useState(null);
   const[page,setPage]=React.useState("schedule");
   const[showAddCard,setShowAddCard]=React.useState(false);
   const[editCard,setEditCard]=React.useState(null);
@@ -9506,7 +9517,7 @@ function App(){
   if(role==="agency")return(
     <div style={{minHeight:"100vh"}}><Header/>
       <div style={{maxWidth:1200,margin:"0 auto",padding:24}}>
-        <AgencyPage agencyId={name} isAdmin={false} agencyPipeline={agencyPipeline} setAgencyPipeline={setAgencyPipeline} kanbanCards={kanbanCards} pushSnap={pushSnap} agencies={agencies} setAgencies={setAgenciesRaw}/>
+        <AgencyPage agencyId={name} isAdmin={false} agencyPipeline={agencyPipeline} setAgencyPipeline={setAgencyPipeline} kanbanCards={kanbanCards} pushSnap={pushSnap} agencies={agencies} setAgencies={setAgenciesRaw} onOpenCard={card=>setModalCard(card)}/>
       </div>
     </div>
   );
@@ -9553,7 +9564,8 @@ function App(){
       <Header/>
       {teacherPopup&&<TeacherPopupModal teacher={teacherPopup} sched={displaySched} rooms1on1={displayRooms1on1} studentCourses={studentCourses} subsByDay={subsByDay} absentSet={absentSet} selDay={selDay} pushSnap={activePushSnap} onClose={()=>setTeacherPopup(null)} mealPlan={mealPlan}/>}
       {studentDailyPopup&&<StudentDailyPopup student={studentDailyPopup} sched={displaySched} absentSet={absentSet} daySubs={daySubs} rooms1on1={displayRooms1on1} groupRosters={displayGroupRosters} selDay={selDay} pushSnap={activePushSnap} onClose={()=>setStudentDailyPopup(null)} studentData={mergedStudentData} kanbanCards={kanbanCards} mealPlan={mealPlan} mealSkips={mealSkips} setMealSkips={setMealSkips}/>}
-      {messengerOpen&&messengerOpen.isAdmin&&<MessengerModal currentUser={messengerOpen.teacher} otherUser={messengerOpen.student} isAdmin={true} convOverride={convKey(messengerOpen.teacher,messengerOpen.student)} messages={messages} onSend={sendMessage} onClose={()=>setMessengerOpen(null)}/>}
+      {messengerOpen&&messengerOpen.isAdmin&&<MessengerModal currentUser={messengerOpen.teacher} otherUser={messengerOpen.student} isAdmin={true} convOverride={convKey(messengerOpen.teacher,messengerOpen.student)} messages={messages} onSend={sendMessage} onClose={()=>setMessengerOpen(null)}/> }
+      {modalCard&&<AddCardModal readOnly initialCard={modalCard} onClose={()=>setModalCard(null)} kanbanCards={kanbanCards} agencies={agencies}/>}
       <div style={{padding:"18px 20px"}}>
         {/* Page nav — sticky below header */}
         <div className="page-nav">
@@ -9564,9 +9576,9 @@ function App(){
         {page==="management"&&<StudentManagementPage kanbanCards={kanbanCards} pushSnap={safePush} agencyPipeline={agencyPipeline} agencies={agencies}/>}
         {page==="studentlist"&&<CurrentStudentListPage kanbanCards={kanbanCards}/>}
         {page==="teachers"&&<TeacherListPage sched={displaySched} teacherMeta={teacherMeta} setTeacherMeta={setTeacherMeta} passwords={passwords}/>}
-        {page==="dormitory"&&<DormitoryPage kanbanCards={kanbanCards} pushSnap={safePush} agencyPipeline={agencyPipeline} agencies={agencies}/>}
+        {page==="dormitory"&&<DormitoryPage kanbanCards={kanbanCards} pushSnap={safePush} agencyPipeline={agencyPipeline} agencies={agencies} onOpenCard={card=>setModalCard(card)}/>}
         {page==="meal"&&<MealPage mealPlan={mealPlan} setMealPlan={setMealPlan} mealDraft={mealDraft} setMealDraft={setMealDraft} mealArchives={mealArchives} setMealArchives={setMealArchives} kanbanCards={kanbanCards} teacherMeta={teacherMeta} mealSkips={mealSkips}/>}
-        {page==="agency"&&<AgencyPage agencyId={null} isAdmin={true} agencyPipeline={agencyPipeline} setAgencyPipeline={setAgencyPipeline} kanbanCards={kanbanCards} pushSnap={safePush} agencies={agencies} setAgencies={setAgenciesRaw}/>}
+        {page==="agency"&&<AgencyPage agencyId={null} isAdmin={true} agencyPipeline={agencyPipeline} setAgencyPipeline={setAgencyPipeline} kanbanCards={kanbanCards} pushSnap={safePush} agencies={agencies} setAgencies={setAgenciesRaw} onOpenCard={card=>setModalCard(card)}/>}
         
 
         {page==="schedule"&&(
@@ -9753,8 +9765,4 @@ window.addEventListener("unhandledrejection",function(e){console.error("Unhandle
     if(h)document.documentElement.style.setProperty("--header-h",h.offsetHeight+"px");
   }
   setHeaderVar();
-  window.addEventListener("resize",setHeaderVar);
-})();
-</script>
-</body>
-</html>
+  window
