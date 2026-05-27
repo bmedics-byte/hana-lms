@@ -3094,8 +3094,7 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds,onOpen
     DORM_SECTIONS.forEach(({rooms})=>{
       rooms.forEach(roomNum=>{
         const bars=roomBars[roomNum]||[];
-        const isFam=FAMILY_ROOM_SET.has(roomNum);
-        const numLanes=isFam?assignLanes(bars).numLanes:Math.max(1,bars.length);
+        const numLanes=assignLanes(bars).numLanes;
         h[roomNum]=numLanes*LANE_H+ROOM_PAD*2;
       });
     });
@@ -3134,15 +3133,31 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds,onOpen
   function onScrollMouseDown(e){
     if(e.button!==0)return;
     const el=scrollRef.current;if(!el)return;
-    dragRef.current={active:true,startX:e.clientX,startScroll:el.scrollLeft,moved:false};
+    dragRef.current={
+      active:true,
+      startX:e.clientX,startY:e.clientY,
+      startScrollLeft:el.scrollLeft,startScrollTop:el.scrollTop,
+      moved:false,direction:null
+    };
     el.style.cursor="grabbing";
-    e.preventDefault(); /* prevent text selection */
+    /* NOTE: no e.preventDefault() — that would both block click events on child bars
+       AND block native vertical wheel/trackpad scroll. userSelect:none handles text selection. */
   }
   function onScrollMouseMove(e){
     const dr=dragRef.current;if(!dr.active)return;
     const dx=e.clientX-dr.startX;
-    if(Math.abs(dx)>4)dr.moved=true;
-    if(dr.moved&&scrollRef.current)scrollRef.current.scrollLeft=dr.startScroll-dx;
+    const dy=e.clientY-dr.startY;
+    const adx=Math.abs(dx),ady=Math.abs(dy);
+    /* Determine dominant scroll direction on first significant movement */
+    if(!dr.direction&&(adx>4||ady>4)){dr.direction=adx>=ady?"h":"v";}
+    if(!dr.direction)return;
+    if(dr.direction==="h"){
+      if(adx>4)dr.moved=true;
+      if(scrollRef.current)scrollRef.current.scrollLeft=dr.startScrollLeft-dx;
+    } else {
+      /* Vertical drag — update scrollTop; don't set moved so bar clicks still fire */
+      if(scrollRef.current)scrollRef.current.scrollTop=dr.startScrollTop-dy;
+    }
   }
   function onScrollMouseUp(){
     dragRef.current.active=false;
@@ -3206,9 +3221,7 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds,onOpen
                 {rooms.map(roomNum=>{
                   const bars=roomBars[roomNum]||[];
                   const isFamilyRoom=FAMILY_ROOM_SET.has(roomNum);
-                  let laned,numLanes;
-                  if(isFamilyRoom){const r=assignLanes(bars);laned=r.bars;numLanes=r.numLanes;}
-                  else{laned=bars.map((b,i)=>({...b,_lane:i}));numLanes=Math.max(1,bars.length);}
+                  const {bars:laned,numLanes}=assignLanes(bars);
                   const rowH=numLanes*LANE_H+ROOM_PAD*2;
                   const isTarget=roomNum===targetNum;
                   return(
@@ -3221,7 +3234,7 @@ function DormitorySheetModal({kanbanCards,targetRoom,onClose,ghostCardIds,onOpen
                         {weeks.map((_,i)=>(
                           <div key={i} style={{position:"absolute",left:i*COL_W,top:0,width:COL_W,height:"100%",borderRight:"1px solid #f0f4f8",background:i===todayWeekIdx?"#eff6ff":i%2===0?"transparent":"rgba(248,250,252,.5)"}}/>
                         ))}
-                        {!isFamilyRoom&&Array.from({length:numLanes-1},(_,li)=>(
+                        {Array.from({length:numLanes-1},(_,li)=>(
                           <div key={li} style={{position:"absolute",left:0,top:ROOM_PAD+(li+1)*LANE_H,width:"100%",height:1,background:"#e2e8f0",zIndex:2}}/>
                         ))}
                         {(()=>{
