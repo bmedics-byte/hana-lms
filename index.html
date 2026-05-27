@@ -3480,7 +3480,7 @@ function StudentIDCard({member, cardId, bannerTop, bannerBottom}){
   );
 }
 
-function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,kanbanCards,agencies,readOnly,currentAuthor}){
+function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,kanbanCards,agencies,readOnly,currentAuthor,modalZIndex}){
   const isNewCard=!initialCard?.id; /* true = creating for the first time, never saved yet */
   const[dormSheetRoom,setDormSheetRoom]=useState(null);
   const[shaking,setShaking]=useState(false);
@@ -3672,12 +3672,12 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
   return(
     <React.Fragment>
       {dormSheetRoom!==null&&kanbanCards&&ReactDOM.createPortal(
-        <DormitorySheetModal kanbanCards={kanbanCards} targetRoom={dormSheetRoom} onClose={()=>setDormSheetRoom(null)}/>,
+        <DormitorySheetModal kanbanCards={kanbanCards} targetRoom={dormSheetRoom} onClose={()=>setDormSheetRoom(null)} onOpenCard={onOpenCard}/>,
         document.body
       )}
       {ReactDOM.createPortal(
     <div className="ed-bg" ref={scrollContainerRef} onClick={e=>{if(e.target===e.currentTarget)tryClose();}}
-      style={{alignItems:"flex-start",overflowY:"auto",paddingTop:20,paddingBottom:20}}>
+      style={{alignItems:"flex-start",overflowY:"auto",paddingTop:20,paddingBottom:20,...(modalZIndex?{zIndex:modalZIndex}:{})}}>
       {/* Outer wrapper: click-stop + relative anchor for sticky X */}
       <div style={{position:"relative",width:"100%",maxWidth:780,flexShrink:0}} onClick={e=>e.stopPropagation()}>
         {/* ✕ button: sticky to top of wrapper, always visible even when modal is wide */}
@@ -9591,7 +9591,7 @@ function App(){
       <div style={{maxWidth:1200,margin:"0 auto",padding:24}}>
         <AgencyPage agencyId={name} isAdmin={false} agencyPipeline={agencyPipeline} setAgencyPipeline={setAgencyPipeline} kanbanCards={kanbanCards} pushSnap={pushSnap} agencies={agencies} setAgencies={setAgenciesRaw} onOpenCard={card=>setModalCard(card)}/>
       </div>
-      {modalCard&&<AddCardModal readOnly initialCard={modalCard} currentAuthor={name}
+      {modalCard&&<AddCardModal readOnly modalZIndex={25000} initialCard={modalCard} currentAuthor={name}
         onSave={card=>{
           /* Comment-only auto-save for agency read-only view */
           const _kc=kanbanCards||[];
@@ -9648,6 +9648,7 @@ function App(){
       {modalCard&&<AddCardModal
         initialCard={modalCard}
         currentAuthor={currentAuthor}
+        modalZIndex={25000}
         onSave={card=>{
           const _kc=kanbanCards||[];
           safePush({kanbanCards:_kc.some(c=>c.id===card.id)?_kc.map(c=>c.id===card.id?card:c):[..._kc,card]});
