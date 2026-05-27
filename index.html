@@ -3480,7 +3480,7 @@ function StudentIDCard({member, cardId, bannerTop, bannerBottom}){
   );
 }
 
-function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,kanbanCards,agencies,readOnly}){
+function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,kanbanCards,agencies,readOnly,currentAuthor}){
   const isNewCard=!initialCard?.id; /* true = creating for the first time, never saved yet */
   const[dormSheetRoom,setDormSheetRoom]=useState(null);
   const[shaking,setShaking]=useState(false);
@@ -3520,6 +3520,23 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
   const[attachments,setAttachments]=useState(initialCard?.attachments||[]);
   const[attUploading,setAttUploading]=useState(false);
   const fileInputRef=React.useRef(null);
+  /* ── Comments ── */
+  const[comments,setComments]=useState(initialCard?.comments||[]);
+  const[newComment,setNewComment]=useState("");
+  function addComment(){
+    if(!newComment.trim())return;
+    const now=new Date();
+    const pad=n=>String(n).padStart(2,"0");
+    const dtStr=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const author=currentAuthor||"Admin";
+    const updated=[...comments,{text:newComment.trim(),author,ts:dtStr}];
+    setComments(updated);
+    setNewComment("");
+    /* In readOnly mode: auto-save comments immediately so they persist on close */
+    if(readOnly&&onSave&&initialCard?.id){
+      onSave({...initialCard,comments:updated});
+    }
+  }
   const cardIdRef=React.useRef(initialCard?.id||("new_"+Date.now()));
   async function uploadAttachment(file){
     const MAX_MB=50;
@@ -3647,6 +3664,7 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
       type,status,notes,attachments,trelloUrl:cardLink.trim(),
       agencyNat:agencyNat||"",agencyName:agencyName||"",consultant:consultant||"",
       agencyId:computedAgencyId||initialCard?.agencyId||"",
+      comments,
       members:(type==="Group/Family"?sortByAge(members):members).map(m=>({...m,name:m.name.trim()})),
     });
   }
@@ -3874,6 +3892,39 @@ function AddCardModal({initialCard,onSave,onClose,onDelete,onArchive,isArchived,
         )}
 
         </div>{/* end readOnly form wrapper */}
+
+        {/* ── Comments Section — always writable, even in read-only view mode ── */}
+        <div style={{marginBottom:14,background:"#f8fafc",borderRadius:12,border:"1.5px solid #e2e8f0",padding:"14px 16px"}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#475569",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+            💬 Comments <span style={{fontWeight:600,color:"#94a3b8",fontSize:11}}>({comments.length})</span>
+          </div>
+          {comments.length===0?(
+            <div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic",marginBottom:8}}>No comments yet.</div>
+          ):(
+            <div style={{maxHeight:200,overflowY:"auto",marginBottom:10,display:"flex",flexDirection:"column",gap:7}}>
+              {[...comments].reverse().map((c,i)=>(
+                <div key={i} style={{background:"white",borderRadius:8,padding:"8px 12px",border:"1px solid #e2e8f0"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                    <span style={{fontSize:11,fontWeight:800,color:"#1e40af",background:"#eff6ff",padding:"1px 8px",borderRadius:10,flexShrink:0}}>{c.author}</span>
+                    <span style={{fontSize:10,color:"#94a3b8"}}>{c.ts}</span>
+                  </div>
+                  <div style={{fontSize:13,color:"#374151",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{c.text}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+            <textarea value={newComment} onChange={e=>setNewComment(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))addComment();}}
+              placeholder="Add a comment... (Ctrl+Enter to submit)"
+              style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:12,resize:"vertical",minHeight:54,fontFamily:"inherit",outline:"none",color:"#1e293b"}}/>
+            <button onClick={addComment} disabled={!newComment.trim()}
+              style={{padding:"8px 14px",background:newComment.trim()?"#1e40af":"#cbd5e1",color:"white",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:newComment.trim()?"pointer":"not-allowed",whiteSpace:"nowrap",alignSelf:"flex-end",transition:"background .15s"}}>
+              ＋ Add
+            </button>
+          </div>
+        </div>
+
         {readOnly?(
           <div style={{marginTop:10}}>
             <button onClick={onClose} style={{width:"100%",padding:11,background:"#7c3aed",color:"white",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:14}}>✕ 닫기</button>
@@ -4316,7 +4367,7 @@ document.addEventListener("dragover",function(e){
 /* ═════════════════════════════════════════════════════
    StudentManagementPage  — Trello-style Kanban lifecycle
 ═════════════════════════════════════════════════════ */
-function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
+function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies,currentAuthor}){
   const[modal,setModal]=useState(null);
   const[filter,setFilter]=useState("");
   const[confirmDelete,setConfirmDelete]=useState(null);
@@ -4607,6 +4658,7 @@ function StudentManagementPage({kanbanCards,pushSnap,agencyPipeline,agencies}){
           isArchived={modal.card?.status==="archived"}
           kanbanCards={kanbanCards}
           agencies={agencies}
+          currentAuthor={currentAuthor}
         />
       )}
       {confirmDelete&&ReactDOM.createPortal(
@@ -9336,6 +9388,7 @@ function App(){
 
   /* ── Post-login derived ── */
   const{role,name}=user;
+  const currentAuthor=role==="admin"?"Admin":name;
   const noSave=()=>{};
   const isViewerLike=role==="viewer"||role==="sched_editor";
   const canSaveSched=role==="admin"||role==="sched_editor";
@@ -9538,6 +9591,14 @@ function App(){
       <div style={{maxWidth:1200,margin:"0 auto",padding:24}}>
         <AgencyPage agencyId={name} isAdmin={false} agencyPipeline={agencyPipeline} setAgencyPipeline={setAgencyPipeline} kanbanCards={kanbanCards} pushSnap={pushSnap} agencies={agencies} setAgencies={setAgenciesRaw} onOpenCard={card=>setModalCard(card)}/>
       </div>
+      {modalCard&&<AddCardModal readOnly initialCard={modalCard} currentAuthor={name}
+        onSave={card=>{
+          /* Comment-only auto-save for agency read-only view */
+          const _kc=kanbanCards||[];
+          pushSnap({kanbanCards:_kc.map(c=>c.id===card.id?card:c)});
+          /* Keep modal open — user is just adding a comment */
+        }}
+        onClose={()=>setModalCard(null)} kanbanCards={kanbanCards} agencies={agencies}/>}
     </div>
   );
 
@@ -9584,7 +9645,18 @@ function App(){
       {teacherPopup&&<TeacherPopupModal teacher={teacherPopup} sched={displaySched} rooms1on1={displayRooms1on1} studentCourses={studentCourses} subsByDay={subsByDay} absentSet={absentSet} selDay={selDay} pushSnap={activePushSnap} onClose={()=>setTeacherPopup(null)} mealPlan={mealPlan}/>}
       {studentDailyPopup&&<StudentDailyPopup student={studentDailyPopup} sched={displaySched} absentSet={absentSet} daySubs={daySubs} rooms1on1={displayRooms1on1} groupRosters={displayGroupRosters} selDay={selDay} pushSnap={activePushSnap} onClose={()=>setStudentDailyPopup(null)} studentData={mergedStudentData} kanbanCards={kanbanCards} mealPlan={mealPlan} mealSkips={mealSkips} setMealSkips={setMealSkips}/>}
       {messengerOpen&&messengerOpen.isAdmin&&<MessengerModal currentUser={messengerOpen.teacher} otherUser={messengerOpen.student} isAdmin={true} convOverride={convKey(messengerOpen.teacher,messengerOpen.student)} messages={messages} onSend={sendMessage} onClose={()=>setMessengerOpen(null)}/> }
-      {modalCard&&<AddCardModal readOnly initialCard={modalCard} onClose={()=>setModalCard(null)} kanbanCards={kanbanCards} agencies={agencies}/>}
+      {modalCard&&<AddCardModal
+        initialCard={modalCard}
+        currentAuthor={currentAuthor}
+        onSave={card=>{
+          const _kc=kanbanCards||[];
+          safePush({kanbanCards:_kc.some(c=>c.id===card.id)?_kc.map(c=>c.id===card.id?card:c):[..._kc,card]});
+          setModalCard(null);
+        }}
+        onClose={()=>setModalCard(null)}
+        onDelete={()=>{safePush({kanbanCards:(kanbanCards||[]).filter(c=>c.id!==modalCard.id)});setModalCard(null);}}
+        kanbanCards={kanbanCards} agencies={agencies}
+      />}
       <div style={{padding:"18px 20px"}}>
         {/* Page nav — sticky below header */}
         <div className="page-nav">
@@ -9592,7 +9664,7 @@ function App(){
         </div>
 
         <div style={{paddingTop:16}}>
-        {page==="management"&&<StudentManagementPage kanbanCards={kanbanCards} pushSnap={safePush} agencyPipeline={agencyPipeline} agencies={agencies}/>}
+        {page==="management"&&<StudentManagementPage kanbanCards={kanbanCards} pushSnap={safePush} agencyPipeline={agencyPipeline} agencies={agencies} currentAuthor={currentAuthor}/>}
         {page==="studentlist"&&<CurrentStudentListPage kanbanCards={kanbanCards}/>}
         {page==="teachers"&&<TeacherListPage sched={displaySched} teacherMeta={teacherMeta} setTeacherMeta={setTeacherMeta} passwords={passwords}/>}
         {page==="dormitory"&&<DormitoryPage kanbanCards={kanbanCards} pushSnap={safePush} agencyPipeline={agencyPipeline} agencies={agencies} onOpenCard={card=>setModalCard(card)}/>}
