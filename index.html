@@ -7973,7 +7973,7 @@ ${driverPhotoHTML}
    ════════════════════════════════════════════════════════════════════ */
 
 function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
-  agencyPipeline,setAgencyPipeline,passwords,teacherMeta}){
+  agencyPipeline,setAgencyPipeline,passwords,teacherMeta,setAgencies}){
 
   const agencyId=isAdmin?null:(agencies||[]).find(a=>a.id)?.id;
   const myEntries=(isAdmin?agencyPipeline:(agencyPipeline||[]).filter(e=>e.agencyId===agencyId))||[];
@@ -7982,7 +7982,23 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
   const[filterAgency,setFilterAgency]=React.useState("");
   const selEntry=(myEntries||[]).find(e=>e.id===selId)||null;
 
-  /* Country name lookup for 2-letter codes */
+  /* New agency registration form state */
+  const[newAg,setNewAg]=React.useState({name:"",nat:"",id:""});
+  const[newAgErr,setNewAgErr]=React.useState("");
+  const[agDocFile,setAgDocFile]=React.useState(null);
+  const agDocRef=React.useRef(null);
+
+  /* Kanban columns for My Students in HANA */
+  const MY_COLS=[
+    {id:"registered",label:"Registered",color:"#8b5cf6",bg:"#f5f3ff"},
+    {id:"incoming",label:"Incoming",color:"#f59e0b",bg:"#fffbeb"},
+    {id:"current",label:"Current Student",color:"#0891b2",bg:"#ecfeff"},
+    {id:"leaving",label:"Leaving",color:"#f97316",bg:"#fff7ed"},
+    {id:"graduated",label:"Graduated",color:"#16a34a",bg:"#f0fdf4"},
+    {id:"archived",label:"Archived",color:"#64748b",bg:"#f8fafc"},
+  ];
+
+  /* Country name lookup */
   const COUNTRY_NAMES={
     "KR":"Korea","TW":"Taiwan","JP":"Japan","CN":"China","VN":"Vietnam",
     "TH":"Thailand","ID":"Indonesia","MY":"Malaysia","AR":"Saudi Arabia",
@@ -7990,19 +8006,13 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
     "SG":"Singapore","US":"United States","CA":"Canada","AU":"Australia",
   };
 
-  /* Pipeline stage: 0=Choose Agency 1=New Reg 2=Under Reg 3=Card Created */
+  /* Pipeline stage: 0=no name 1=name filled 2=letters confirmed 3=card created */
   function getStage(entry){
     if(entry.kanbanCardId)return 3;
     if(entry.acceptanceLetter?.confirmed||entry.pickupLetter?.confirmed)return 2;
     if((entry.members||[]).some(m=>m.name))return 1;
     return 0;
   }
-  const STAGES=[
-    {key:0,label:"① 에이전시 고르기",color:"#6366f1",bg:"#eef2ff",desc:"에이전시 선택 대기"},
-    {key:1,label:"② 새 학생 등록",color:"#f59e0b",bg:"#fffbeb",desc:"정보 입력 중"},
-    {key:2,label:"③ 등록 중인 학생",color:"#0891b2",bg:"#ecfeff",desc:"서류 확인 완료"},
-    {key:3,label:"④ 트렐로 카드 생성",color:"#16a34a",bg:"#f0fdf4",desc:"카드 생성됨"},
-  ];
 
   function save(updated){
     setAgencyPipeline(p=>{const n=p.map(x=>x.id===updated.id?updated:x);lsSaveAgencyPipe(n);return n;});
@@ -8038,12 +8048,21 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
 
   /* Header badge counts */
   const underReg=(myEntries||[]).filter(e=>!e.kanbanCardId).length;
-  const hasCard=(myEntries||[]).filter(e=>!!e.kanbanCardId).length;
   const contractedCount=(agencies||[]).length;
 
   const allAgencyIds=[...new Set((myEntries||[]).map(e=>e.agencyId).filter(Boolean))].sort();
   const filteredEntries=filterAgency?(myEntries||[]).filter(e=>e.agencyId===filterAgency):(myEntries||[]);
-  const listEntries=activeTab==="myStudents"?filteredEntries.filter(e=>!!e.kanbanCardId):filteredEntries;
+  const pipelineEntries=filteredEntries.filter(e=>!e.kanbanCardId);
+
+  /* My Students kanban: filter kanbanCards by agency */
+  const myKanbanCards=React.useMemo(()=>{
+    if(!kanbanCards)return[];
+    const fid=filterAgency||(isAdmin?null:agencyId);
+    if(!fid)return kanbanCards;
+    return kanbanCards.filter(c=>c.agencyId===fid);
+  },[kanbanCards,isAdmin,agencyId,filterAgency]);
+
+  const myStudentsCount=myKanbanCards.length;
 
   /* Contracted agencies grouped by nationality */
   const agByNat=React.useMemo(()=>{
@@ -8055,6 +8074,8 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
   const agInitials=(isAdmin?"HQ":agencyId||"AG").replace(/\(.*\)/,"").trim().slice(0,2).toUpperCase();
   const agLabel=isAdmin?"Agency Management":agencyId;
 
+  function selectEntry(e){setSelId(e.id);}
+
   const tabBtn=(tab,label)=>(
     <button onClick={()=>setActiveTab(tab)}
       style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
@@ -8063,6 +8084,18 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
       {label}
     </button>
   );
+
+  /* Register new agency */
+  function handleRegisterAgency(){
+    setNewAgErr("");
+    if(!newAg.name.trim()){setNewAgErr("Agency name is required.");return;}
+    if(!newAg.id.trim()){setNewAgErr("Agency ID is required.");return;}
+    if((agencies||[]).find(a=>a.id===newAg.id.trim())){setNewAgErr("Agency ID already exists.");return;}
+    const ag={id:newAg.id.trim(),name:newAg.name.trim(),nationality:newAg.nat.trim()||"??",password:"hana123",contract:agDocFile?agDocFile.name:null};
+    if(setAgencies)setAgencies(prev=>{const n=[...(prev||[]),ag];localStorage.setItem("hana_agencies_v1",JSON.stringify(n));return n;});
+    setNewAg({name:"",nat:"",id:""});setAgDocFile(null);
+    alert("Agency '"+ag.name+"' registered successfully!");
+  }
 
   return(
     <div style={{display:"flex",flexDirection:"column"}}>
@@ -8079,43 +8112,88 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          {/* Agency filter */}
-          <select value={filterAgency} onChange={e=>setFilterAgency(e.target.value)}
-            style={{padding:"7px 10px",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:8,
-              fontSize:12,fontWeight:700,background:"rgba(255,255,255,.12)",color:"white",cursor:"pointer"}}>
-            <option value="">All Agencies ({(myEntries||[]).length})</option>
-            {allAgencyIds.map(id=>(
-              <option key={id} value={id}>{id} ({(myEntries||[]).filter(e=>e.agencyId===id).length})</option>
-            ))}
-          </select>
-          {/* New Registration */}
-          <button onClick={()=>{
-              const newEntry={
-                id:"pipe_"+Date.now(),agencyId:agencyId||"",cardType:"Individual",
-                members:[{name:"",nationality:"",birthYear:"",birthMonth:"",birthDay:"",
-                  course:"",roomType:"",studyStart:"",studyEnd:"",passportPhoto:null,specialRequests:""}],
-                consultant:"",studyStart:"",studyEnd:"",
-                flightInfo:{pickupRequired:true,flightNumber:"",airport:"Clark",arrivalDate:"",arrivalTime:""},
-                acceptanceLetter:null,pickupLetter:null,kanbanCardId:null,
-                createdAt:new Date().toISOString(),
-              };
-              setAgencyPipeline(p=>{const n=[...p,newEntry];lsSaveAgencyPipe(n);return n;});
-              setSelId(newEntry.id);
-              setActiveTab("pipeline");
-            }}
-            style={{background:AG_GOLD,color:AG_NAVY,border:"none",borderRadius:8,
-              padding:"8px 16px",fontWeight:800,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
-            ＋ New Students Registration
-          </button>
+          {isAdmin&&(
+            <select value={filterAgency} onChange={e=>setFilterAgency(e.target.value)}
+              style={{padding:"7px 10px",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:8,
+                fontSize:12,fontWeight:700,background:"rgba(255,255,255,.12)",color:"white",cursor:"pointer"}}>
+              <option value="">All Agencies ({(agencies||[]).length})</option>
+              {[...new Set([...allAgencyIds,...(agencies||[]).map(a=>a.id)])].sort().map(id=>(
+                <option key={id} value={id}>{id}</option>
+              ))}
+            </select>
+          )}
+          {activeTab==="pipeline"&&(
+            <button onClick={()=>{
+                const newEntry={
+                  id:"pipe_"+Date.now(),agencyId:agencyId||"",cardType:"Individual",
+                  members:[{name:"",nationality:"",birthYear:"",birthMonth:"",birthDay:"",
+                    course:"",roomType:"",studyStart:"",studyEnd:"",passportPhoto:null,specialRequests:""}],
+                  consultant:"",studyStart:"",studyEnd:"",
+                  flightInfo:{pickupRequired:true,flightNumber:"",airport:"Clark",arrivalDate:"",arrivalTime:""},
+                  acceptanceLetter:null,pickupLetter:null,kanbanCardId:null,
+                  createdAt:new Date().toISOString(),
+                };
+                setAgencyPipeline(p=>{const n=[...p,newEntry];lsSaveAgencyPipe(n);return n;});
+                setSelId(newEntry.id);
+              }}
+              style={{background:AG_GOLD,color:AG_NAVY,border:"none",borderRadius:8,
+                padding:"8px 16px",fontWeight:800,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+              ＋ New Students Registration
+            </button>
+          )}
           {tabBtn("pipeline","Under Registration ("+underReg+")")}
-          {tabBtn("myStudents","My Students in Hana ("+hasCard+")")}
+          {tabBtn("myStudents","My Students in Hana ("+myStudentsCount+")")}
           {tabBtn("contracted","Contracted Agencies ("+contractedCount+")")}
         </div>
       </div>
 
-      {/* ── Contracted Agencies by Country ── */}
-      {activeTab==="contracted"?(
+      {/* ── Contracted Agencies tab ── */}
+      {activeTab==="contracted"&&(
         <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:"0 0 12px 12px",padding:20,minHeight:300}}>
+
+          {/* New Agency Registration Form */}
+          <div style={{background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:12,padding:18,marginBottom:24}}>
+            <div style={{fontSize:14,fontWeight:800,color:AG_NAVY,marginBottom:14}}>＋ Register New Agency</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+              <div>
+                <label style={{fontSize:11,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Agency Name *</label>
+                <input value={newAg.name} onChange={e=>setNewAg(p=>({...p,name:e.target.value}))}
+                  placeholder="e.g. Global Study" maxLength={60}
+                  style={{width:"100%",padding:"8px 10px",border:"1.5px solid #cbd5e1",borderRadius:8,fontSize:13,boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Agency ID *</label>
+                <input value={newAg.id} onChange={e=>setNewAg(p=>({...p,id:e.target.value}))}
+                  placeholder="e.g. GOPHIL(TW)" maxLength={30}
+                  style={{width:"100%",padding:"8px 10px",border:"1.5px solid #cbd5e1",borderRadius:8,fontSize:13,boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Nationality Code</label>
+                <input value={newAg.nat} onChange={e=>setNewAg(p=>({...p,nat:e.target.value.toUpperCase()}))}
+                  placeholder="e.g. TW" maxLength={2}
+                  style={{width:"100%",padding:"8px 10px",border:"1.5px solid #cbd5e1",borderRadius:8,fontSize:13,boxSizing:"border-box"}}/>
+              </div>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:11,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Contract / Documents</label>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <input ref={agDocRef} type="file" style={{display:"none"}} onChange={e=>setAgDocFile(e.target.files[0]||null)}/>
+                <button onClick={()=>agDocRef.current?.click()}
+                  style={{padding:"7px 14px",border:"1.5px solid #cbd5e1",borderRadius:8,background:"white",fontSize:12,cursor:"pointer",fontWeight:600}}>
+                  📎 Upload Document
+                </button>
+                {agDocFile&&<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>✅ {agDocFile.name}</span>}
+                {!agDocFile&&<span style={{fontSize:11,color:"#94a3b8"}}>No file selected</span>}
+              </div>
+            </div>
+            {newAgErr&&<div style={{fontSize:12,color:"#dc2626",marginBottom:8,fontWeight:600}}>{newAgErr}</div>}
+            <button onClick={handleRegisterAgency}
+              style={{background:AG_NAVY,color:"white",border:"none",borderRadius:8,padding:"9px 22px",fontWeight:800,fontSize:13,cursor:"pointer"}}>
+              Register Agency
+            </button>
+          </div>
+
+          {/* Contracted Agencies by Country */}
           <div style={{fontSize:15,fontWeight:800,color:AG_NAVY,marginBottom:16}}>📋 Contracted Agencies by Country</div>
           {agByNat.length===0?(
             <div style={{color:"#94a3b8",fontSize:13,textAlign:"center",padding:40}}>No agencies registered yet.</div>
@@ -8148,54 +8226,72 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
             </div>
           )}
         </div>
-      ):(
+      )}
 
-        /* ── Pipeline / My Students view ── */
-        <div style={{border:"1px solid #e2e8f0",borderRadius:"0 0 12px 12px",overflow:"hidden",background:"white"}}>
-
-          {/* Kanban pipeline overview — shown when no entry is selected */}
-          {!selEntry&&(
-            <div style={{background:"#f8fafc",borderBottom:"2px solid #e2e8f0",padding:"14px 16px 0"}}>
-              <div style={{fontSize:11,fontWeight:800,color:"#64748b",marginBottom:10,
-                textTransform:"uppercase",letterSpacing:.8}}>Pipeline Overview</div>
-              <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:14}}>
-                {STAGES.map(st=>{
-                  const stEntries=listEntries.filter(e=>getStage(e)===st.key);
-                  return(
-                    <div key={st.key} style={{flex:"0 0 190px",minWidth:190,background:st.bg,
-                      border:"1.5px solid "+st.color+"30",borderRadius:10,overflow:"hidden"}}>
-                      <div style={{background:st.color,padding:"6px 11px",display:"flex",
-                        alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:11,fontWeight:800,color:"white",lineHeight:1.3}}>{st.label}</span>
-                        <span style={{background:"rgba(255,255,255,.28)",color:"white",borderRadius:10,
-                          fontSize:11,fontWeight:800,padding:"1px 7px"}}>{stEntries.length}</span>
-                      </div>
-                      <div style={{padding:"6px 7px",maxHeight:200,overflowY:"auto"}}>
-                        {stEntries.length===0?(
-                          <div style={{padding:"10px 4px",textAlign:"center",color:"#94a3b8",fontSize:11}}>{st.desc}</div>
-                        ):stEntries.map(e=>{
-                          const nm=(e.members||[])[0]?.name||"(unnamed)";
-                          const cnt=(e.members||[]).length;
-                          return(
-                            <div key={e.id} onClick={()=>setSelId(e.id)}
-                              style={{background:"white",borderRadius:7,padding:"6px 9px",marginBottom:5,
-                                cursor:"pointer",border:"1px solid "+st.color+"40",
-                                boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
-                              <div style={{fontSize:11,fontWeight:700,color:"#1e293b",marginBottom:1}}>
-                                {nm}{cnt>1?" +"+(cnt-1):""}
-                              </div>
-                              <div style={{fontSize:10,color:"#64748b"}}>{e.agencyId||"No agency"}</div>
-                              {e.studyStart&&<div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{e.studyStart} ~ {e.studyEnd}</div>}
-                            </div>
-                          );
-                        })}
-                      </div>
+      {/* ── My Students in HANA kanban ── */}
+      {activeTab==="myStudents"&&(
+        <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:"0 0 12px 12px",padding:16,minHeight:300,overflowX:"auto"}}>
+          {myKanbanCards.length===0?(
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:200,color:"#94a3b8",textAlign:"center"}}>
+              <div style={{fontSize:36,marginBottom:10}}>🎓</div>
+              <div style={{fontSize:14,fontWeight:700,marginBottom:6,color:"#64748b"}}>No student cards found</div>
+              <div style={{fontSize:12}}>{isAdmin?"No cards linked to this agency yet.":"Your agency has no student cards yet."}</div>
+            </div>
+          ):(
+            <div style={{display:"flex",gap:12,minWidth:"max-content"}}>
+              {MY_COLS.map(col=>{
+                const colCards=myKanbanCards.filter(c=>c.status===col.id);
+                return(
+                  <div key={col.id} style={{flex:"0 0 200px",width:200,background:col.bg,
+                    border:"1.5px solid "+col.color+"30",borderRadius:10,overflow:"hidden"}}>
+                    <div style={{background:col.color,padding:"7px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <span style={{fontSize:12,fontWeight:800,color:"white"}}>{col.label}</span>
+                      <span style={{background:"rgba(255,255,255,.28)",color:"white",borderRadius:10,
+                        fontSize:11,fontWeight:800,padding:"1px 7px"}}>{colCards.length}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{padding:"8px",maxHeight:520,overflowY:"auto"}}>
+                      {colCards.length===0?(
+                        <div style={{padding:"14px 4px",textAlign:"center",color:"#94a3b8",fontSize:11}}>No students</div>
+                      ):colCards.map(card=>{
+                        const primaryMember=(card.members||[])[0];
+                        const nm=primaryMember?.name||"(unnamed)";
+                        const cnt=(card.members||[]).length;
+                        const nat=primaryMember?.nationality||"";
+                        return(
+                          <div key={card.id}
+                            style={{background:"white",borderRadius:7,padding:"8px 10px",marginBottom:6,
+                              border:"1px solid "+col.color+"40",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
+                            <div style={{fontSize:12,fontWeight:700,color:"#1e293b",marginBottom:2}}>
+                              {nm}{cnt>1?" +"+(cnt-1):""}
+                            </div>
+                            {nat&&<div style={{fontSize:10,color:"#64748b",marginBottom:2}}>🌏 {nat}</div>}
+                            {primaryMember?.studyStart&&(
+                              <div style={{fontSize:9,color:"#94a3b8"}}>
+                                {primaryMember.studyStart} ~ {primaryMember.studyEnd||card.studyEnd||""}
+                              </div>
+                            )}
+                            {card.trelloUrl&&(
+                              <a href={card.trelloUrl} target="_blank" rel="noopener noreferrer"
+                                onClick={e=>e.stopPropagation()}
+                                style={{display:"inline-block",marginTop:4,fontSize:9,color:"#3b82f6",fontWeight:600,textDecoration:"none"}}>
+                                🔗 Trello
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Under Registration (pipeline) tab ── */}
+      {activeTab==="pipeline"&&(
+        <div style={{border:"1px solid #e2e8f0",borderRadius:"0 0 12px 12px",overflow:"hidden",background:"white"}}>
 
           {/* Two-panel: left list + right detail */}
           <div style={{display:"flex",minHeight:300}}>
@@ -8205,17 +8301,18 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
               <div style={{padding:"7px 14px",fontSize:10,fontWeight:800,color:"#475569",
                 textTransform:"uppercase",letterSpacing:.5,borderBottom:"1px solid #e2e8f0",background:"#f1f5f9",
                 display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span>Applications ({listEntries.length})</span>
+                <span>Applications ({pipelineEntries.length})</span>
               </div>
-              {listEntries.length===0?(
+              {pipelineEntries.length===0?(
                 <div style={{padding:20,textAlign:"center",color:"#94a3b8",fontSize:12}}>
                   No registrations yet.<br/>Click ＋ New Students Registration to start.
                 </div>
-              ):listEntries.map(e=>{
+              ):pipelineEntries.map(e=>{
                 const isSelected=e.id===selId;
                 const primaryName=(e.members||[])[0]?.name||"(unnamed)";
                 const count=(e.members||[]).length;
                 const stage=getStage(e);
+                const stageColors=["#6366f1","#f59e0b","#0891b2","#16a34a"];
                 return(
                   <div key={e.id} onClick={()=>selectEntry(e)}
                     style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid #e2e8f0",
@@ -8229,15 +8326,12 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
                       {e.studyStart&&<span>{e.studyStart} ~ {e.studyEnd}</span>}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
-                      <span style={{fontSize:9,background:STAGES[stage].color,color:"white",
+                      <span style={{fontSize:9,background:stageColors[stage],color:"white",
                         borderRadius:6,padding:"1px 6px",fontWeight:700}}>
                         {["①","②","③","④"][stage]}
                       </span>
                       {(e.acceptanceLetter?.confirmed||e.pickupLetter?.confirmed)&&(
                         <span style={{fontSize:9,background:"#dcfce7",color:"#15803d",borderRadius:6,padding:"1px 6px",fontWeight:700}}>✅</span>
-                      )}
-                      {e.kanbanCardId&&(
-                        <span style={{fontSize:9,background:"#dbeafe",color:"#1d4ed8",borderRadius:6,padding:"1px 6px",fontWeight:700}}>🃏</span>
                       )}
                     </div>
                     {isAdmin&&(
@@ -8304,7 +8398,7 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
                     파이프라인에서 항목을 선택하세요
                   </div>
                   <div style={{fontSize:12}}>
-                    위의 칸반 카드 또는 왼쪽 목록을 클릭하면<br/>상세 정보가 표시됩니다.
+                    왼쪽 목록을 클릭하면<br/>상세 정보가 표시됩니다.
                   </div>
                 </div>
               )}
@@ -8325,6 +8419,7 @@ function AgencyPipeline({isAdmin,agencies,kanbanCards,onCreateCard,
     </div>
   );
 }
+
 const HANA_LS_KEYS=[
   "hana_kanban_v1","hana_sched_v1","hana_week_meta","hana_draft_week","hana_archives",
   "hana_celldata_v1","hana_rooms1on1_v1","hana_grouprosters_v1","hana_absentsets_v1",
@@ -8442,6 +8537,7 @@ function AgencyPage({agencyId,isAdmin,agencyPipeline,setAgencyPipeline,kanbanCar
       onCreateCard={onCreateCard}
       agencyPipeline={agencyPipeline}
       setAgencyPipeline={setAgencyPipeline}
+      setAgencies={setAgencies}
     />
   );
 }
