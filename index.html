@@ -34,8 +34,8 @@
     .cn-t{background:#f0fdfa;} .cn-s{background:#f0fdf4;} .cn-absent{background:#fef2f2!important;}
     .ct{cursor:pointer;transition:background .12s;}
     .ce{background:#fff;} .ce:hover{background:#f8fafc;}
-    .cst{background:#dbeafe;} .cst:hover{background:#bfdbfe;}
-    .cgr{background:#d1fae5;} .cgr:hover{background:#a7f3d0;}
+    .cst{background:#bfdbfe;} .cst:hover{background:#93c5fd;}
+    .cgr{background:#bbf7d0;} .cgr:hover{background:#86efac;}
     .csp{background:#fef9c3;font-style:italic;} .csp:hover{background:#fef08a;}
     .cab{background:#fee2e2!important;opacity:.55;}
     .csub{background:#fef3c7!important;border:2px solid #f59e0b!important;}
@@ -179,6 +179,21 @@
     @keyframes dropzone{from{opacity:0;transform:scaleY(.8)}to{opacity:1;transform:scaleY(1)}}
     @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
     .member-form{padding:12px;background:#f8fafc;border-radius:10px;margin-bottom:8px;position:relative;border:1px solid #e2e8f0;}
+    .print-hide{} /* screen-only; hidden via @media print below */
+    @media print{
+      @page{size:A4 landscape;margin:10mm;}
+      [data-header="1"]{display:none!important;}
+      .page-nav{display:none!important;}
+      .tab-bar{display:none!important;}
+      .print-hide{display:none!important;}
+      .sw{overflow:visible!important;box-shadow:none!important;border-radius:0!important;}
+      .st{width:100%;border-collapse:collapse;}
+      thead{display:table-header-group;}
+      tr{page-break-inside:avoid;}
+      .cn{position:static!important;}
+      .cst,.cgr,.csp,.csub,.cab,.cst:hover,.cgr:hover{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      .st th,.st td{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    }
   </style>
 </head>
 <body>
@@ -375,7 +390,7 @@ const PERIODS_EXTENDED=[
 const GROUP_ROOM_COLS=["Kindergarten","Group A","Group B","Group C","Group D","Group E","Group F","Activity A","Activity B","Activity C","Activity D","Activity E"];
 const GRC_HDR_COLOR={"Kindergarten":"#92400e","Group A":"#166534","Group B":"#166534","Group C":"#166534","Group D":"#166534","Group E":"#166534","Group F":"#166534","Activity A":"#1e40af","Activity B":"#6b21a8","Activity C":"#9d174d","Activity D":"#b45309","Activity E":"#065f46"};
 const GRC_BG_COLOR={"Kindergarten":"#fef9c3","Group A":"#d1fae5","Group B":"#bbf7d0","Group C":"#a7f3d0","Group D":"#d1fae5","Group E":"#ecfdf5","Group F":"#f0fdf4","Activity A":"#dbeafe","Activity B":"#ede9fe","Activity C":"#fce7f3","Activity D":"#fed7aa","Activity E":"#d1fae5"};
-const CELL_TYPE_COLOR={"1on1":"#dbeafe","Group Class":"#d1fae5","Activity Class":"#e9d5ff","Kindergarten":"#fef9c3","Office Hour":"#f3f4f6","Training":"#fce7f3"};
+const CELL_TYPE_COLOR={"1on1":"#bfdbfe","Group Class":"#bbf7d0","Activity Class":"#fed7aa","Kindergarten":"#fef9c3","Office Hour":"#f3f4f6","Training":"#fce7f3"};
 const TODAY_WEEKDAY=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
 
 /* ── Student list constants ── */
@@ -862,7 +877,7 @@ function DropdownCell({value,subValue,options,optionGroups,onSelect,isAbsentOrig
       <div className="ci">
         {isSub&&<div className="sub-b">SUB</div>}
         {isAbsentOrig&&!isSub&&value&&<div className="orig-s">{value}</div>}
-        <span style={{fontSize:11}}>{dv||<span style={{color:"#d1d5db"}}>—</span>}</span>
+        <span style={{fontSize:11,fontWeight:700}}>{dv||<span style={{color:"#d1d5db",fontWeight:400}}>—</span>}</span>
       </div>
       {open&&ReactDOM.createPortal(
         <div ref={popRef} className="ddp" style={{top:pos.top,left:pos.left}}>
@@ -4840,7 +4855,7 @@ function TeacherScheduleGrid({sched,cellData,groupRosters,selDay,subsByDay,absen
                         <div className="ci">
                           {sub&&<div className="sub-b">SUB</div>}
                           {isAbsent&&orig&&<div className={sub?"":"orig-s"}>{orig}</div>}
-                          <span style={{fontSize:11}}>{sub||orig||<span style={{color:"#d1d5db"}}>—</span>}</span>
+                          <span style={{fontSize:11,fontWeight:700}}>{sub||orig||<span style={{color:"#d1d5db",fontWeight:400}}>—</span>}</span>
                         </div>
                       </td>
                     );
@@ -4848,7 +4863,7 @@ function TeacherScheduleGrid({sched,cellData,groupRosters,selDay,subsByDay,absen
                   return(
                     <td key={p.i}
                       className={`ct ${baseCls}${isDO&&!isConflict?" drag-over":isDO&&isConflict?" drag-over-conflict":""}`}
-                      style={p.i===13?{borderLeft:"3px solid #c9a84c"}:undefined}
+                      style={{...(p.i===13?{borderLeft:"3px solid #c9a84c"}:{}), ...(meta.classType==="Activity Class"?{background:"#fed7aa"}:meta.classType==="Kindergarten"?{background:"#fef9c3"}:{})}}
                       draggable={canDrag}
                       title={canDrag?"Drag ↕↔ to move · Click to edit":"Click to edit"}
                       onDragStart={canDrag?()=>{
@@ -4906,7 +4921,7 @@ function TeacherScheduleGrid({sched,cellData,groupRosters,selDay,subsByDay,absen
                                 ?`${meta.subType}`
                                 :meta.classType}
                           </div>}
-                          <span style={{fontSize:11}}>{sub||(isGroupType?null:orig)||(!isGroupType&&!orig?<span style={{color:"#d1d5db"}}>—</span>:null)}</span>
+                          <span style={{fontSize:11,fontWeight:700}}>{sub||(isGroupType?null:orig)||(!isGroupType&&!orig?<span style={{color:"#d1d5db",fontWeight:400}}>—</span>:null)}</span>
                           {showMeta&&meta.classType==="Activity Class"&&meta.activitySchedule?.[selDay]&&(
                             <div className="cell-sub-meta">{meta.activitySchedule[selDay]}</div>
                           )}
@@ -5724,8 +5739,8 @@ function StudentScheduleGrid({sched,setSched,absentSet,daySubs,isAdmin,rooms1on1
                 const eveningBorder=p.i===13?{borderLeft:"3px solid #c9a84c"}:{};
                 if(grpAssign){
                   const{kind,label,teacher:gt,isNative}=grpAssign;
-                  const bg=kind==="activity"?"#ede9fe":kind==="kinder"?"#fef9c3":"#d1fae5";
-                  const fg=kind==="activity"?"#6b21a8":kind==="kinder"?"#92400e":isNative?"#7c3aed":"#166534";
+                  const bg=kind==="activity"?"#fed7aa":kind==="kinder"?"#fef9c3":"#bbf7d0";
+                  const fg=kind==="activity"?"#9a3412":kind==="kinder"?"#92400e":isNative?"#7c3aed":"#166534";
                   return(
                     <td key={p.i} style={{background:bg,textAlign:"center",padding:"3px 4px",verticalAlign:"middle",...eveningBorder}}>
                       <div style={{fontSize:10,fontWeight:800,color:fg,lineHeight:1.3}}>{label}</div>
@@ -9779,6 +9794,13 @@ function App(){
                 onApply={(newSched,newRosters)=>{activePushSnap({sched:newSched,groupRosters:newRosters});}}
                 onClose={()=>setShowAutoAssign(false)}
               />
+            )}
+            {(schedTab==="teacher"||schedTab==="student")&&(
+              <div className="print-hide" style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+                <button onClick={()=>window.print()} style={{padding:"6px 18px",borderRadius:8,border:"1.5px solid #0d9488",background:"#f0fdfa",color:"#0d9488",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                  🖨️ 시간표 인쇄하기 (Print)
+                </button>
+              </div>
             )}
             {schedTab==="teacher"&&<TeacherScheduleGrid sched={displaySched} cellData={displayCellData} groupRosters={displayGroupRosters} selDay={selDay} subsByDay={subsByDay} absentSet={absentSet} daySubs={daySubs} rooms1on1={displayRooms1on1} studentData={mergedStudentData} pushSnap={activePushSnap} isAdmin onTeacherClick={setTeacherPopup} messages={messages} onOpenMessenger={setMessengerOpen}/>}
             {schedTab==="student"&&<StudentScheduleGrid sched={displaySched} setSched={activeSetSched} absentSet={absentSet} daySubs={daySubs} isAdmin rooms1on1={displayRooms1on1} onStudentClick={setStudentDailyPopup} groupRosters={displayGroupRosters} studentData={mergedStudentData} kanbanCards={kanbanCards}/>}
